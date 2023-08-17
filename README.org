@@ -8,20 +8,20 @@ The core of =AudioFS= consists of userspace filesystems that convert a
 directory tree of audio files into another form or format. The main
 filesystems that it provides are:
 
-  - *flactrack*: given as a source a directory tree containing [[https://en.wikipedia.org/wiki/FLAC][FLAC]]-encoded
+  - *flactrackfs*: given as a source a directory tree containing [[https://en.wikipedia.org/wiki/FLAC][FLAC]]-encoded
     audio files representing entire albums along with associated external
     [[https://en.wikipedia.org/wiki/Cue_sheet_(computing)][cue files]], the filesystem will have a similar file structure, except that
     corresponding to each of the per-album FLAC files will be a directory
     containing one FLAC audio file for each of the album's tracks, where each
     such per-track audio file's basename and metadata will include the
     track's title and the name of the artist that performed it
-  - *flac2mp3*: given as a source a directory tree containing FLAC-encoded
+  - *flac2mp3fs*: given as a source a directory tree containing FLAC-encoded
     audio files, the filesystem will have an identical structure except that
     in place of each FLAC audio file in the source it'll have an [[https://en.wikipedia.org/wiki/MP3][MP3]] audio
     file that is a compressed representation of the same audio data, and that
     has similar metadata to that of the corresponding FLAC audio file
     (limited by the [[https://en.wikipedia.org/wiki/ID3][ID3v2]] tags that the MP3s' metadata is stored in)
-  - *flac2ogg*: given as a source a directory tree containing FLAC-encoded
+  - *flac2oggfs*: given as a source a directory tree containing FLAC-encoded
     audio files, the filesystem will have an identical structure except that
     in place of each FLAC audio file in the source it'll have an [[https://en.wikipedia.org/wiki/Vorbis][Ogg Vorbis]]
     audio file that is a compressed representation of the same audio data,
@@ -40,9 +40,9 @@ filesystems that it provides are:
 The fact that these are filesystems gives them a certain amount of
 flexibility:
   - one AudioFS filesystem can be used as the source of another: for example,
-    a =flactrack= filesystem can be the source of a =flac2mp3= filesystem,
-    which would result in the latter containing an MP3 audio file for each
-    track of each album in the =flactrack= filesystem's source
+    a =flactrackfs= filesystem can be the source of a =flac2mp3fs=
+    filesystem, which would result in the latter containing an MP3 audio file
+    for each track of each album in the =flactrackfs= filesystem's source
   - as with any other file, wildcards can be used when interacting with a
     =musicsearchfs= filesystem: for example, the command
     ~ls Kind/track/Artist/Wire/and/Year/19[78]*/and/Title/*Love*/*~ could be
