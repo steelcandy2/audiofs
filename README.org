@@ -23,7 +23,7 @@ filesystems that it provides are:
     (limited by the [[https://en.wikipedia.org/wiki/ID3][ID3v2]] tags that the MP3s' metadata is stored in)
   - *flac2ogg*: given as a source a directory tree containing FLAC-encoded
     audio files, the filesystem will have an identical structure except that
-    in place of each FLAC audio file in the source it'll have an [[https://en.wikipedia.org/wiki/MP3][Ogg Vorbis]]
+    in place of each FLAC audio file in the source it'll have an [[https://en.wikipedia.org/wiki/Vorbis][Ogg Vorbis]]
     audio file that is a compressed representation of the same audio data,
     and that has the same metadata as the corresponding FLAC audio file
   - *musicsearchfs*: given as a source a directory tree containing audio
