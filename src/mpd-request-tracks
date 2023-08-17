@@ -1,0 +1,63 @@
+#!/usr/bin/env python
+#
+# Copyright (C) James MacKay 2009
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+from audiofs import mpd
+import audiofs.utilities as ut
+
+
+# Classes.
+
+class Program(mpd.mp_AbstractIncludeTracksProgram):
+    """
+    Represents programs that insert tracks immediately after the current
+    track of an MPD sever's current playlist (or at the start of the playlist
+    if the server doesn't have a current track).
+    """
+
+    def _usageMessage(self, progName, shortHelpOpts, longHelpOpts,
+                      helpOptionsDesc):
+
+        result = """
+usage: %s %s %s [%s server-id] path ...
+
+where the 'path's are the pathnames of the music files to insert
+into an MPD server's playlist. Any 'path' that is a directory
+will cause all of the music files that it directly contains to
+be inserted instead.
+
+If the optional '%s' option is specified then the tracks will be
+inserted into the playlist of the MPD server whose server ID
+best matches 'server-id'; otherwise they'll be inserted into the
+playlist of the currently selected server.
+%s
+Note: an attempt will be made to preload the inserted files into
+the various music filesystems' caches.
+""" % (progName, shortHelpOpts, longHelpOpts, self.selectServerOption,
+       self.selectServerOption, helpOptionsDesc)
+        assert result
+        return result
+
+    def _includeTracks(self, server, paths):
+        assert server is not None
+        assert paths is not None
+        server.requestAndPreload(paths)
+
+
+# Main program.
+
+Program().run()

@@ -1,0 +1,56 @@
+#!/usr/bin/env python
+#
+# $Id: activate-music-directory,v 1.2 2008/12/16 22:12:40 jgm Exp $
+#
+# Activates an existing music directory: builds/mounts the caches, mounts
+# the audio filesystems and starts the associated daemons.
+#
+# See build-music-directory, deactivate-music-directory.
+#
+# Copyright (C) James MacKay 2008
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+from audiofs import admin, config
+
+
+# Constants.
+
+_conf = config.obtain()
+
+
+# Classes.
+
+class Program(admin.ad_AbstractMusicDirectoryProgram):
+    """
+    Represents programs that activate a music directory.
+    """
+
+    def _ad_mainUsageDescription(self):
+        result = """which activates the music directory '%s':
+the caches are created or mounted, the audio filesystems are
+mounted, and all associated daemon processes are started.""" % _conf.rootDir
+        assert result
+        return result
+
+    def _ad_administer(self, ad, argsMap):
+        assert ad is not None
+        assert argsMap is not None
+        ad.ad_activateMusicDirectory()
+
+
+# Main program.
+
+Program().run()

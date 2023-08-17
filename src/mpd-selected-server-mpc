@@ -1,0 +1,104 @@
+#!/usr/bin/env python
+#
+# Copyright (C) James MacKay 2009
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+from audiofs import mpd, musicfs, config
+
+import audiofs.utilities as ut
+
+from StringIO import StringIO
+import sys
+
+
+# Constants.
+
+_conf = config.obtain()
+
+
+# Classes.
+
+class Program(ut.ut_AbstractProgram):
+    """
+    Represents programs that execute the 'mpc' command with specified
+    arguments, where the command interacts with the currently selected MPD
+    server.
+    """
+
+    def _usageMessage(self, progName, shortHelpOpts, longHelpOpts,
+                      helpOptionsDesc):
+        result = """
+usage: %s %s %s [-v] ...
+
+which executes the 'mpc' command specified by the arguments
+represented by '...'. The command will interact with the
+currently selected MPD server.
+
+If the optional '-v' option is specified then the command's
+output will appear on standard out; by default any and all
+command output is discarded.
+%s""" % (progName, shortHelpOpts, longHelpOpts, helpOptionsDesc)
+        assert result
+        return result
+
+    def _shortOptions(self):
+        result = "v"
+        assert result is not None
+        return result
+
+    def _buildInitialArgumentsMap(self):
+        result = { "cmdArgs": "", "verbose": False }
+        assert result is not None
+        return result
+
+    def _processOption(self, opt, val, argsMap):
+        assert opt
+        # 'val' may be None
+        assert argsMap is not None
+        result = True
+        if opt == "-v":
+            argsMap["verbose"] = True
+        else:
+            result = self._handleUnknownOption(opt)
+        return result
+
+    def _processNonOptionArguments(self, args, argsMap):
+        assert args is not None
+        assert argsMap is not None
+        result = True
+        argsMap["cmdArgs"] = " ".join(args)
+        return result
+
+    def _execute(self, argsMap):
+        assert argsMap is not None
+        result = 0
+        server = mpd.mp_Mpd()  # the currently selected server
+        cmdArgs = argsMap["cmdArgs"]
+        isVerbose = argsMap["verbose"]
+        #print "cmdArgs = [%s]" % cmdArgs
+        output = server.executeMpcCommand(cmdArgs)
+        if output is None:
+            self._fail("executing the mpc command failed")
+            result = 1
+        elif isVerbose:
+            sys.stdout.write(output)
+        assert result >= 0
+        return result
+
+
+# Main program.
+
+Program().run()

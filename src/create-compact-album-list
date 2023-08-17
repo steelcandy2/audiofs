@@ -1,0 +1,617 @@
+#!/usr/bin/env python3
+#
+# Outputs to standard out the HTML that makes up a document that lists,
+# in a very compact (and tiny) way, all of the albums that I have (or at
+# least all of the ones that I have archived as FLAC files.)
+#
+# Copyright (C) James MacKay 2009-2019
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+from audiofs import config, music
+import audiofs.utilities as ut
+
+from abc import abstractmethod
+
+import glob
+import io
+import os
+import re
+import sys
+
+
+# Constants
+
+_conf = config.obtain()
+
+
+# Configuration
+
+# The directory under which the per-album FLAC files are to be found.
+_albumsDir = _conf.flactrackAlbumsDir
+
+
+# The name of the FLAC tag whose value gives the album's title.
+_albumTitleTagName = music.mu_flacAlbumTag
+
+# The name of the optional FLAC tag whose value gives the album's
+# source medium (if the tag is present).
+_albumSourceMediumTagName = "SOURCE_MEDIUM"
+
+# the default album source medium (that is, the one assumed for albums
+# that don't have a SOURCE_MEDIUM tag).
+_defaultAlbumSourceMedium = "cd"
+
+
+# The format of the command to execute to get an album's title, after
+# removing the first '_albumTitleTagLen' characters from it.
+_albumTitleCmdFmt = "%s --show-tag=%s '%s'" % (_conf.metaflacProgram,
+                                               _albumTitleTagName, "%s")
+_albumTitleTagLen = len(_albumTitleTagName) + 1
+
+# The format of the command to execute to get an album's source medium, after
+# removing the first '_albumSourceMediumTagLen' characters from it.
+_albumSourceMediumCmdFmt = "%s --show-tag=%s '%s'" % (_conf.metaflacProgram,
+                                             _albumSourceMediumTagName, "%s")
+_albumSourceMediumTagLen = len(_albumSourceMediumTagName) + 1
+
+
+# All of the words (in lowercase) to remove from album titles.
+_wordsToRemove = set(["a", "an", "and", "at", "in", "is", "it",
+                      "of", "on", "or", "the", "to",
+                      "&", "+", "-", "@"])
+
+# The character with which to replace words that are removed from album
+# titles: it replaces any and all spaces immediately before and after the
+# word too.
+_removedWordReplacement = "/"
+
+# The maximum number of words to include in an album title (AFTER any words
+# that are going to be removed have been).
+_maxWordsInTitle = 3
+
+# The name of the default page size.
+#_defaultPageSize = "a4"
+#_defaultPageSize = "legal"
+_defaultPageSize = "letter"
+
+# The default sizes of the page's margins.
+#
+# Note: the document body adds extra margins.
+#_defaultPageMargins = "0.5cm 0.5cm 2cm 0.5cm"
+#_defaultPageMargins = "0"
+_defaultPageMargins = "0.1cm 0"
+
+# The default size of font to use, in points.
+_defaultFontSize = 6
+
+# The glob pattern that albums files' filenames must match.
+_albumGlobPattern = "*.flac"
+
+# The regular expression that matches the '(Disc n...)' part of an album
+# title (allowing us to coalesce multi-disc albums into one).
+discRegex = "[ ]*[(]Disc \d[^)]*[)][ ]*"
+
+# The formats used to build the (X)HTML fragments that contain the
+# artist and album title information.
+_artistHtmlFmt = """<span class="artist">%s:</span>"""
+_titleHtmlFmt =  """    <span class="%s">%s</span>"""
+
+# The separator to use between album titles in the (X)HTML output when
+# colour and font changes aren't used.
+_albumTitleSeparator = ","
+
+
+# The names of all possible output formats (that is, all valid arguments for
+# the '-o' option).
+_htmlOutputFormat = "html"
+_pdfOutputFormat = "pdf"
+_orgOutputFormat = "org"  # i.e. Emacs org mode format
+_allValidOutputFormats = [_htmlOutputFormat, _orgOutputFormat]
+try:
+    import weasyprint as pdf
+    #import xhtml2pdf.document as pdf
+    import logging
+    _allValidOutputFormats.append(_pdfOutputFormat)
+    log = logging.getLogger("weasyprint")  # created in xhtml2pdf module
+    #log = logging.getLogger("xhtml2pdf")  # created in xhtml2pdf module
+    log.addHandler(logging.StreamHandler(sys.stderr))
+except ImportError as ex:
+    pass
+
+
+# Functions.
+
+def _warn(msg):
+    """
+    Outputs to standard error the warning message 'msg'.
+    """
+    assert msg is not None  # though it may be empty
+    print(msg, file = sys.stderr)
+
+
+# Classes.
+
+class Album:
+    """
+    Represents an album by a recording artist.
+    """
+
+    def __init__(self, title, medium, *args, **kwargs):
+        """
+        Initializes us with the title of this album and the medium it's on.
+        """
+        assert title
+        assert medium
+        super().__init__(*args, **kwargs)
+        self.title = title
+        self.medium = medium
+
+
+class InformationWriter:
+    """
+    The superclass for classes that write artist and album information to a
+    given destination.
+    """
+
+    def __init__(self, dest, *args, **kwargs):
+        """
+        Initializes us with the file-like object 'dest' that we're to write
+        all information to.
+        """
+        assert dest is not None
+        super().__init__(*args, **kwargs)
+        self._dest = dest
+
+    @abstractmethod
+    def writeArtist(self, artistName):
+        """
+        Writes out information about the artist named 'artistName'.
+
+        See also: _write(), _writeLine().
+        """
+        assert artistName  # cannot be empty
+        pass
+
+    @abstractmethod
+    def writeAllAlbums(self, albums, artistName, sep):
+        """
+        Writes out information about all of the albums by the artist named
+        'artistName', where the album are in the list of Albums 'albums' in
+        the order that their information is to be output and 'sep' is the
+        separator to output between the information for each album.
+
+        See also: _write(), _writeLine().
+        """
+        assert albums      # cannot be empty
+        assert artistName  # cannot be empty
+        assert sep is not None  # but it can be empty
+        pass
+
+
+    def _write(self, txt):
+        """
+        Writes out the text 'txt'.
+
+        See also: _writeLine().
+        """
+        assert txt is not None  # but it can be empty
+        print(txt, file = self._dest, end = "")
+
+    def _writeLine(self, txt):
+        """
+        Writes out the text 'txt' followed by a newline.
+
+        See also: _write().
+        """
+        assert txt is not None  # but it can be empty
+        print(txt, file = self._dest)  # outputs a newline by default
+
+
+    def _shortenAlbumTitle(self, title):
+        """
+        Returns the (possibly) shorter version of the album title 'title'.
+        """
+        assert title
+        words = title.split()
+        parts = []
+        numWords = 0
+        rep = _removedWordReplacement
+        toRem = _wordsToRemove
+        if words[0].lower() not in toRem:
+            parts.append(words[0])
+            numWords += 1
+        for w in words[1:]:
+            if numWords >= _maxWordsInTitle:
+                break
+            elif w.lower() in toRem:
+                if parts and parts[-1] != rep:
+                    parts.append(rep)
+            else:
+                if parts:
+                    lastPart = parts[-1]
+                    if lastPart != rep and lastPart != " ":
+                        parts.append(" ")
+                parts.append(w)
+                numWords += 1
+        result = "".join(parts)
+        assert result
+        return result
+
+
+class HtmlInformationWriter(InformationWriter):
+    """
+    The subclass of InformationWriter that writes out information as HTML.
+    """
+
+    def writeArtist(self, artistName):
+        assert artistName  # cannot be empty
+        self._writeLine(_artistHtmlFmt % artistName)
+
+    def writeAllAlbums(self, albums, artistName, sep):
+        assert albums      # cannot be empty
+        assert artistName  # cannot be empty
+        assert sep is not None  # but it can be empty
+        isOdd = True
+        titles = []
+        for a in albums:
+            if isOdd:
+                cls = "odd-album"
+            else:
+                cls = "even-album"
+            if a.medium != _defaultAlbumSourceMedium:
+                cls += "-noncd"
+            titles.append(_titleHtmlFmt %
+                          (cls, self._shortenAlbumTitle(a.title)))
+            isOdd = not isOdd
+        self._writeLine(sep.join(titles))
+
+
+class OrgModeInformationWriter(InformationWriter):
+    """
+    The subclass of InformationWriter that writes out information as part of
+    an Emacs org mode file.
+    """
+
+    def writeArtist(self, artistName):
+        assert artistName  # cannot be empty
+        # Write the artist name in bold (with no newline after it).
+        #
+        # Note: we always put a space before the artist name so that the '*'
+        # that makes it bold doesn't get mistaken for the start of a heading.
+        self._write(" *{}*: ".format(artistName))
+
+    def writeAllAlbums(self, albums, artistName, sep):
+        assert albums      # cannot be empty
+        assert artistName  # cannot be empty
+        assert sep is not None  # but it can be empty
+        # Odd albums' titles should be in italics, and the titles of albums
+        # not in the default format are also underlined.
+        isOdd = True
+        titles = []
+        for a in albums:
+            t = self._shortenAlbumTitle(a.title)
+            if isOdd:
+                t = "/{}/".format(t)
+            if a.medium != _defaultAlbumSourceMedium:
+                t = "_{}_".format(t)
+            titles.append(t)
+            isOdd = not isOdd
+        self._write(sep.join(titles))
+
+
+class Program(ut.ut_AbstractProgram):
+    """
+    Represents programs that create playlists of randomly-selected audio
+    files.
+    """
+
+    def _usageMessage(self, progName, shortHelpOpts, longHelpOpts,
+                      helpOptionsDesc):
+        if _pdfOutputFormat in _allValidOutputFormats:
+            pdfPart = " or '%s'" % _pdfOutputFormat
+        else:
+            pdfPart = ": '%s' would also be allowed if the\n" \
+                "weasyprint Python module were installed" % \
+                _pdfOutputFormat
+        result = """
+usage: %(progName)s %(shortHelpOpts)s %(longHelpOpts)s [-f] [-c] [-s num] [-o fmt]
+
+which outputs to standard out the contents of a document - by
+default in (X)HTML - that lists, in a very compact and tiny way,
+all of the albums that are archived as FLAC files.
+%(helpOptionsDesc)s
+If the optional '-f' option is specified then changes will be
+made to the font for different types of information. If the
+optional '-c' option is specified then different types of
+information will be rendered in different colours.
+
+If the optional '-s' option is specified then the size of the
+font that's used will be 'num' points. The default is %(defaultFontSize)i points.
+
+If the optional '-o' option is specified then the document that
+is output will be in the format specified by 'fmt', where 'fmt'
+can be '%(htmlFmt)s' (the default)%(pdfHelpPart)s.
+""" % { "progName": progName, "shortHelpOpts": shortHelpOpts,
+        "longHelpOpts": longHelpOpts, "helpOptionsDesc": helpOptionsDesc,
+        "defaultFontSize": _defaultFontSize, "pdfHelpPart": pdfPart,
+        "htmlFmt": _htmlOutputFormat }
+        assert result
+        return result
+
+    def _shortOptions(self):
+        result = "fcs:o:"
+        assert result is not None
+        return result
+
+    def _buildInitialArgumentsMap(self):
+        result = {
+            "pageSize": _defaultPageSize,
+            "pageMargins": _defaultPageMargins,
+            "changeFont": False,
+            "changeColour": False,
+            "fontSize": _defaultFontSize,
+            "titleSep": _albumTitleSeparator,
+            "format": _htmlOutputFormat
+        }
+        assert result is not None
+        return result
+
+    def _processOption(self, opt, val, argsMap):
+        assert opt
+        # 'val' may be None
+        assert argsMap is not None
+        result = True
+        if opt == "-f":
+            argsMap["changeFont"] = True
+            argsMap["titleSep"] = ""
+        elif opt == "-c":
+            argsMap["changeColour"] = True
+            argsMap["titleSep"] = ""
+        elif opt == "-s":
+            n = ut.ut_tryToParseInt(val, minValue = 1)
+            if n is not None:
+                argsMap["fontSize"] = n
+            else:
+                self._fail("'%s' isn't a valid font size" % val)
+                result = False
+        elif opt == "-o":
+            if val in _allValidOutputFormats:
+                argsMap["format"] = val
+            else:
+                self._fail("'%s' isn't a valid output format" % val)
+                result = False
+        else:
+            result = self._handleUnknownOption(opt)
+        return result
+
+    def _processNonOptionArguments(self, args, argsMap):
+        assert args is not None
+        assert argsMap is not None
+        result = True
+        if len(args) != 0:
+            result = False
+            self._fail("Too many arguments")
+        return result
+
+    def _execute(self, argsMap):
+        assert argsMap is not None
+        result = 0
+        outputFmt = argsMap["format"]
+        if outputFmt == _orgOutputFormat:
+            result = self._printOrgOutput(argsMap)
+        else:
+            result = self._printHtmlOrPdfOutput(argsMap, outputFmt)
+        assert result >= 0
+        return result
+
+    def _printOrgOutput(self, argsMap):
+        """
+        Prints to standard output the compact album list as an org mode
+        document.
+        """
+        assert argsMap is not None
+        result = 0
+        if argsMap["changeFont"]:
+            _warn("The 'changeColour' argument is currently ignored for "
+                  "org output.")
+        if argsMap["changeColour"]:
+            _warn("The 'changeColour' argument is currently ignored for "
+                  "org output.")
+        w = OrgModeInformationWriter(sys.stdout)
+        self._printArtistsAndAlbums(argsMap, w)
+        assert result >= 0
+        return result
+
+    def _printHtmlOrPdfOutput(self, argsMap, outputFmt):
+        """
+        Prints to standard output the compact album list as HTML or PDF:
+        which one is determined by the value of 'outputFmt'.
+        """
+        assert argsMap is not None
+        assert outputFmt in [_htmlOutputFormat, _pdfOutputFormat]
+        result = 0
+        artistProps = []
+        #commonAlbumProps = ["word-spacing: 1px"]
+        commonAlbumProps = []
+        oddAlbumProps = commonAlbumProps[:]
+        evenAlbumProps = commonAlbumProps[:]
+        if argsMap["changeFont"]:
+            # Make artists bold and odd albums italic.
+            artistProps.append("font-weight: bold")
+            oddAlbumProps.append("font-style: italic")
+            #evenAlbumProps.append("font-style: normal")
+        if argsMap["changeColour"]:
+            # Make artists red, odd albums black and even albums blue.
+            artistProps.append("color: red")
+            oddAlbumProps.append("color: black")
+            evenAlbumProps.append("color: blue")
+
+        underlineProp = "text-decoration: underline"
+        oddNonCdAlbumProps = oddAlbumProps[:]
+        oddNonCdAlbumProps.append(underlineProp)
+        evenNonCdAlbumProps = evenAlbumProps[:]
+        evenNonCdAlbumProps.append(underlineProp)
+        fmt = """<html>
+<head>
+    <title>Compact Albums List</title>
+    <style type="text/css" media="all">
+        @page
+        {
+            size: %(pageSize)s;
+            margin: %(pageMargins)s;
+/*
+            margin: 0;
+            margin-top: 0.5cm;
+            margin-bottom: 2cm;
+            margin-left: 1cm;
+            margin-right: 1cm;
+*/
+        }
+
+        body
+        {
+            font-family: Times;
+            font-size: %(fontSize)s;
+            margin: 0.5em;
+            padding: 0;
+            line-height: 1.1em;
+            text-align: justify;
+        }
+
+        .artist
+        {
+            %(artistProps)s
+        }
+
+        .odd-album
+        {
+            %(oddAlbumProps)s
+        }
+
+        .even-album
+        {
+            %(evenAlbumProps)s
+        }
+
+        .odd-album-noncd
+        {
+            %(oddNoncdAlbumProps)s
+        }
+
+        .even-album-noncd
+        {
+            %(evenNoncdAlbumProps)s
+        }
+    </style>
+</head>
+<body>
+"""
+        if outputFmt == _htmlOutputFormat:
+            out = sys.stdout
+        else:
+            assert outputFmt == _pdfOutputFormat
+            out = io.StringIO()
+
+        sep = "; "
+        msg = fmt % { "pageSize": argsMap["pageSize"],
+            "pageMargins": argsMap["pageMargins"],
+            "fontSize": str(argsMap["fontSize"]) + "pt",
+            "artistProps": sep.join(artistProps),
+            "oddAlbumProps": sep.join(oddAlbumProps),
+            "evenAlbumProps": sep.join(evenAlbumProps),
+            "oddNoncdAlbumProps": sep.join(oddNonCdAlbumProps),
+            "evenNoncdAlbumProps": sep.join(evenNonCdAlbumProps) }
+        print(msg, file = out)
+        w = HtmlInformationWriter(out)
+        self._printArtistsAndAlbums(argsMap, w)
+        print("\n</body>\n</html>\n", file = out)
+
+        if outputFmt == _pdfOutputFormat:
+            html = pdf.HTML(string = out.getvalue())
+            print(html.write_pdf(None))
+            out.close()
+            #pdf.pisaDocument(out, sys.stdout)
+
+        assert result >= 0
+        return result
+
+    def _printArtistsAndAlbums(self, argsMap, w):
+        """
+        Writes out the artist and album information in (X)HTML format using
+        the InformationWriter 'w'.
+        """
+        assert argsMap is not None
+        assert w is not None
+        baseDir = _albumsDir
+        artists = []
+        for f in os.listdir(baseDir):
+            p = os.path.join(baseDir, f)
+            if os.path.isdir(p):
+                artists.append((p, f))
+        artists.sort(key = lambda x: x[1].lower())
+
+        cmdFmt = _albumTitleCmdFmt
+        titleTagLen = _albumTitleTagLen
+        albumTitlesSep = "%s " % argsMap["titleSep"]
+        for artist in artists:
+            (p, f) = artist
+            albumPaths = glob.glob(os.path.join(p, _albumGlobPattern))
+            titlesMap = {}
+            for ap in albumPaths:
+                t = ut.ut_executeShellCommand(cmdFmt % ap)[titleTagLen:]
+                t = re.sub(discRegex, "", t.strip())
+                medium = self._albumSourceMedium(ap)
+                if t in titlesMap:
+                    # Only replace the existing mapping if the current
+                    # album's medium is the default one.
+                    if medium == _defaultAlbumSourceMedium:
+                        titlesMap[t] = medium
+                else:
+                    titlesMap[t] = medium
+
+            # Only print artists with at least one album.
+            #
+            # Note: this also eliminates non-album directories like 'CVS'
+            # directories.
+            if titlesMap:
+                w.writeArtist(f)
+                titles = list(titlesMap.keys())
+                titles.sort(key = str.lower)
+                albums = [Album(t, titlesMap[t]) for t in titles]
+                w.writeAllAlbums(albums, f, albumTitlesSep)
+
+    def _albumSourceMedium(self, path):
+        """
+        Given the pathname 'path' of a FLAC album file, returns the album's
+        source medium.
+        """
+        assert path is not None
+        cmdFmt = _albumSourceMediumCmdFmt
+        tagLen = _albumSourceMediumTagLen
+        result = ut.ut_executeShellCommand(cmdFmt % path)
+        if result:
+            assert len(result) > tagLen
+            result = result[tagLen:]
+        else:
+            # There's no source medium tag, so assume the default medium.
+            result = _defaultAlbumSourceMedium
+        assert result is not None
+        return result
+
+
+# Main program.
+
+Program().run()

@@ -1,0 +1,55 @@
+#!/usr/bin/env python
+#
+# $Id: dismantle-music-directory,v 1.2 2008/12/16 22:12:40 jgm Exp $
+#
+# Dismantles an existing music directory: stops the associated daemons,
+# unmounts all of the filesystems mounted under the music directory and
+# deletes everything in and under the music directory.
+#
+# See build-music-directory, deactivate-music-directory.
+#
+# Copyright (C) James MacKay 2008
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+from audiofs import admin, config
+
+
+# Constants.
+
+_conf = config.obtain()
+
+
+# Classes.
+
+class Program(admin.ad_AbstractMusicDirectoryProgram):
+    """
+    Represents programs that dismantle a music directory.
+    """
+
+    def _ad_mainUsageDescription(self):
+        result = """which dismantles the music directory '%s':
+all associated daemon processes are stopped, all filesystems
+mounted under the directory are unmounted, then everything
+in and under the directory is deleted.""" % _conf.rootDir
+        assert result
+        return result
+
+    def _ad_administer(self, ad, argsMap):
+        assert ad is not None
+        assert argsMap is not None
+        ad.ad_dismantleMusicDirectory()
+
+Program().run()

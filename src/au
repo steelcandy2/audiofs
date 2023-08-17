@@ -1,0 +1,445 @@
+#!/usr/bin/env python
+#
+# Copyright (C) 2011 by James MacKay.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+import os.path
+import sys
+
+import audiofs.utilities as ut
+
+
+# Constants.
+
+_helpSubcommandName = "help"
+
+# Error messages and formats.
+_noCommandsMatchMsgFmt = "No subcommands start with '%s'."
+_multipleCommandsMatchMsgFmt = "More than one command starts with '%s'."
+_missingSubcommandMsg = "A subcommand must be specified."
+
+_commandSummaryPrefixFmt = "%s %s -"
+
+# Command summaries.
+_albumsCommandSummaryMsg = "parent for all album-related subcommands"
+_albumsCompactCommandSummaryMsg = "writes a very compact PDF album list to standard out"
+_helpCommandSummaryMsg = "writes help information for this command to standard out"
+
+
+# Functions.
+
+def _notOneMatchingCommandMessage(prefix, matches):
+    """
+    Returns the error message to output when 'prefix' matches either no
+    commands or more than one command, where 'matches' is a list whose
+    size is the number of commands that 'prefix' matched.
+
+    Note: no information in 'matches' is used other than its size/length.
+    """
+    assert prefix is not None
+    assert matches is not None
+    assert len(matches) != 1
+    fmt = _multipleCommandsMatchMsgFmt
+    if len(matches) == 0:
+        fmt = _noCommandsMatchMsgFmt
+    result = fmt % prefix
+    assert result is not None
+    return result
+
+
+# Classes.
+
+class Command(object):
+    """
+    The interface implemented by all classes that represent a command
+    that can be executed.
+
+    See CommandBuilder.
+    """
+
+    def execute(self):
+        """
+        Executes this command.
+        """
+        raise NotImplementedError
+
+class AbstractCommand(Command):
+    """
+    An abstract base class for Commands.
+    """
+
+    def __init__(self, builder):
+        """
+        Constructs an AbstractCommand from the CommandBuilder that built
+        it.
+        """
+        assert builder is not None
+        self._builder = builder
+
+    def builder(self):
+        """
+        Returns our builder.
+        """
+        assert self._builder is not None
+        return self._builder
+
+
+class HelpCommand(AbstractCommand):
+    """
+    The class of Command that outputs the a command's help message as a
+    result of it being explicitly requested (as opposed to being output as
+    part of the reporting of an error).
+    """
+
+    def __init__(self, builder, out, cmdText):
+        """
+        Constructs a HelpCommand from the CommandBuilder 'builder' that built
+        it, and the file 'out' that the help message is to be written to.
+        """
+        assert builder is not None
+        assert out is not None
+        assert cmdText is not None
+        #print "creating HelpCommand from builder [%s]" % builder
+        AbstractCommand.__init__(self, builder)
+        self._out = out
+        self._cmdText = cmdText
+
+    def execute(self):
+        """
+        See Command.execute().
+        """
+        # We write explicitly requested help messsages to standard out.
+        self.builder().writeLongHelpMessage(self._out, self._cmdText)
+
+
+class CommandBuilder(object):
+    """
+    The interface implemented by all classes that build Commands.
+    """
+
+    def build(self, parent, cmdPrefix, cmdName, args, err):
+        """
+        Builds and returns the Command specified by the arguments 'args' that
+        is preceded by the commands and subcommands (if any) in 'cmdText'
+        (which is the part of the command that's not in 'args'), outputting
+        any and all error messages to the file object 'err'.
+
+        If 'parent' isn't None then it's the CommandBuilder that's using this
+        CommandBuilder to build a Command.
+        """
+        # 'parent' may be None
+        assert cmdPrefix is not None    # though it may be an empty string
+        assert cmdName                  # not None or empty
+        assert args is not None         # though it may be an empty list
+        assert err is not None
+        raise NotImplementedError
+        # 'result' may be None
+        return result
+
+    def writeLongHelpMessage(self, out, cmdText, msg = None):
+        """
+        Writes out to 'out' the long version of the help message for the
+        command(s) that we build, preceded by 'msg' iff it isn't None.
+        """
+        assert out is not None
+        assert cmdText is not None
+        # 'msg may be None
+        raise NotImplementedError
+
+    def writeShortHelpMessage(self, out, cmdText, msg = None):
+        """
+        Writes out to 'out' the short version of the help message for the
+        command(s) that we build, preceded by 'msg' iff it isn't None.
+
+        Note: this message usually consists of the usage line and a single
+        paragraph summarizing what the command does.
+        """
+        assert out is not None
+        assert cmdText is not None
+        # 'msg may be None
+        raise NotImplementedError
+
+    def writeSummaryMessage(self, out):
+        """
+        Writes out to 'out' a short - one line or so - summary of the
+        command(s) that we build.
+        """
+        assert out is not None
+        raise NotImplementedError
+
+class AbstractCommandBuilder(CommandBuilder):
+    """
+    An abstract base class for CommandBuilders.
+    """
+
+    def writeMessagePrefix(self, out, msg):
+        """
+        Writes out the message prefix 'msg' using 'out' iff 'msg' is not
+        None.
+
+        See writeLongHelpMessage(), writeShortHelpMessage().
+        """
+        assert out is not None
+        # 'msg' may be None
+        if msg is not None:
+            print >> out, ""
+            print >> out, msg
+
+class AbstractParentCommandBuilder(AbstractCommandBuilder):
+    """
+    An abstract base class for CommandBuilders that usually only build
+    Commands indirectly, through the use of other CommandBuilders.
+    """
+
+    def build(self, parent, cmdPrefix, cmdName, args, err):
+        """
+        See CommandBuilder.build().
+        """
+        #print "---> AbstractParentCommandBuilder.build(%s, %s, %s, [%s], err)" % (parent, cmdPrefix, cmdName, ", ".join(args))
+        #print "   -> self = %s" % self
+        # 'parent' may be None
+        assert cmdPrefix is not None    # though it may be an empty string
+        assert cmdName                  # not None or empty
+        assert args is not None         # though it may be an empty list
+        assert err is not None
+
+        subcmdPrefix = cmdPrefix
+        if subcmdPrefix:
+            subcmdPrefix += " "
+        subcmdPrefix += cmdName
+
+        result = None
+        if len(args) > 0:
+            k = args[0]
+            matches = self.smartMatchSubcommandBuilder(k)
+            if len(matches) == 1:
+                (subcmd, sb) = matches[0]
+                #print "k = [%s], subcmd = [%s], subcmd builder = %s" % (k, subcmd, sb)
+                result = sb.build(self, subcmdPrefix, subcmd, args[1:], err)
+            else:
+                self.writeShortHelpMessage(err, subcmdPrefix,
+                    _notOneMatchingCommandMessage(k, matches))
+        else:
+            self.writeLongHelpMessage(err, subcmdPrefix,
+                                      _missingSubcommandMsg)
+
+        # 'result' may be None
+        return result
+
+    def writeLongHelpMessage(self, out, cmdText, msg = None):
+        """
+        See CommandBuilder.writeLongHelpMessage().
+        """
+        assert out is not None
+        assert cmdText is not None
+        # 'msg may be None
+        #print "in AbstractParentCommandBuilder.writeLongHelpMessage()"
+        self.writeShortHelpMessage(out, cmdText, msg)
+            # by default parent CommandBuilders have identical long and
+            # short help messages: a summary of their subcommands
+
+    def writeShortHelpMessage(self, out, cmdText, msg = None):
+        """
+        See CommandBuilder.writeShortHelpMessage().
+        """
+        assert out is not None
+        assert cmdText is not None
+        # 'msg may be None
+        #print "in AbstractParentCommandBuilder.writeShortHelpMessage()"
+        self.writeMessagePrefix(out, msg)
+        m = self.subcommandBuildersMap()
+        subcmds = m.keys()[:]
+        subcmds.sort()
+        print >> out, ""
+        for sc in subcmds:
+            print >> out, _commandSummaryPrefixFmt % (cmdText, sc),
+            #print "m[sc] = %s" % m[sc]
+            m[sc].writeSummaryMessage(out)
+        print >> out, ""
+
+    def smartMatchSubcommandBuilder(self, subcmdPrefix):
+        """
+        Returns a list of all of the key-value pairs in our subcommand
+        builders map whose key is either exectly 'subcmdPrefix', or (if
+        there are no such pairs) whose key starts with 'subcmdPrefix'.
+
+        See subcommandBuildersMap().
+        """
+        assert subcmdPrefix is not None
+        result = ut.ut_smartMatchKeys(subcmdPrefix,
+                                      self.subcommandBuildersMap())
+        assert result is not None  # though it may be empty
+        return result
+
+    def subcommandBuildersMap(self):
+        """
+        Returns the map that maps the name of each of our command's
+        subcommands to the CommandBuilder to use to build Commands for that
+        subcommand.
+        """
+        #assert result is not None
+        raise NotImplementedError
+
+class AbstractDirectCommandBuilder(AbstractCommandBuilder):
+    """
+    An abstract base class for CommandBuilders that usually build Commands
+    directly (as opposed to building them using other CommandBuilders).
+    """
+    pass
+
+# TODO: handle processing of required common options !!!
+# - especially the help options
+# - override build() (?)
+# - see ut.ut_AbstractProgram
+
+
+class HelpSubcommandBuilder(AbstractDirectCommandBuilder):
+    """
+    The class of CommandBuilder that builds Commands that output help
+    messages that have been explicitly requested (as opposed to ones that
+    are output as a result of an error in specifying a command).
+    """
+
+    def build(self, parent, cmdPrefix, cmdName, args, err):
+        """
+        See CommandBuilder.build().
+        """
+        #print "---> HelpSubcommandBuilder.build(%s, %s, %s, [%s], err)" % (parent, cmdPrefix, cmdName, ", ".join(args))
+        # 'parent' may be None
+        assert cmdPrefix is not None    # though it may be an empty string
+        assert cmdName                  # not None or empty
+        assert args is not None         # though it may be an empty list
+        assert err is not None
+
+        out = sys.stdout
+            # explicitly requested help messages are written to standard
+            # out (unlike help messages that are output as part of handling
+            # an error).
+
+        b = parent
+        subcmdText = cmdPrefix
+        if len(args) > 0:
+            k = args[0]
+            matches = parent.smartMatchSubcommandBuilder(k)
+            if len(matches) == 1:
+                (subcmd, b) = matches[0]
+                #print "help cmd match: k = [%s], subcmd = [%s]" % (k, subcmd)
+                if subcmdText:
+                    subcmdText += " "
+                subcmdText += subcmd
+                    # skipping args[0], the "help" subcommand
+            else:
+                out = err
+                self.writeMessagePrefix(out,
+                    _notOneMatchingCommandMessage(k, matches))
+        # 'result' may be None
+        return HelpCommand(b, out, subcmdText)
+
+    def writeSummaryMessage(self, out):
+        """
+        See CommandBuilder.writeSummaryMessage().
+        """
+        assert out is not None
+        print >> out, _helpCommandSummaryMsg
+
+
+class AlbumsCompactCommand(AbstractCommand):
+    """
+    The class of Command that generates a compact list of albums.
+    """
+    pass
+
+class AlbumsCompactCommandBuilder(AbstractDirectCommandBuilder):
+    """
+    The class of CommandBuilder that builds the AlbumsCompactCommand.
+    """
+
+    def writeSummaryMessage(self, out):
+        """
+        See CommandBuilder.writeSummaryMessage().
+        """
+        assert out is not None
+        print >> out, _albumsCompactCommandSummaryMsg
+
+class AlbumsSubcommandBuilder(AbstractParentCommandBuilder):
+    """
+    The class of CommandBuilder that builds album-related commands.
+    """
+
+    _subcommandBuilders = {
+        "compact": AlbumsCompactCommandBuilder(),
+        _helpSubcommandName: HelpSubcommandBuilder()
+    }
+
+    def writeSummaryMessage(self, out):
+        """
+        See CommandBuilder.writeSummaryMessage().
+        """
+        assert out is not None
+        print >> out, _albumsCommandSummaryMsg
+
+    def subcommandBuildersMap(self):
+        """
+        See AbstractParentCommandBuilder.subcommandBuildersMap().
+        """
+        #assert result is not None
+        return self._subcommandBuilders
+
+
+
+class TopLevelCommandBuilder(AbstractParentCommandBuilder):
+    """
+    Builds a Command given all of the information about the command.
+    """
+
+    _subcommandBuilders = {
+        "albums":       AlbumsSubcommandBuilder(),
+#        "catalogue":    CatalogueSubcommandBuilder(),
+#        "directory":    DirectorySubcommandBuilder(),
+        _helpSubcommandName: HelpSubcommandBuilder(),
+#        "playlists":    PlaylistsSubcommandBuilder(),
+#        "ratings":      RatingsSubcommandBuilder(),
+#        "servers":      ServersSubcommandBuilder(),
+#        "tracks":       TracksSubcommandBuilder()
+    }
+
+    def subcommandBuildersMap(self):
+        """
+        Returns the map that maps the name of each of our command's
+        subcommands to the CommandBuilder to use to build Commands for that
+        subcommand.
+        """
+        #assert result is not None
+        return self._subcommandBuilders
+
+
+# Main program.
+
+cmdPrefix = ""
+cmdName = os.path.basename(sys.argv[0])
+args = sys.argv[1:]
+cmd = TopLevelCommandBuilder().build(None, cmdPrefix,
+                                     cmdName, args, sys.stderr)
+
+rc = 0
+if cmd is not None:
+    try:
+        rc = cmd.execute()
+    except:
+        rc = 2
+else:
+    rc = 1
+sys.exit(rc)

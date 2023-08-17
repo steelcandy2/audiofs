@@ -1,0 +1,181 @@
+#!/usr/bin/env python
+#
+# $Id: maintain-cache-directory,v 1.6 2010/05/08 15:54:22 jgm Exp $
+#
+# Maintains a cache directory by checking that the total size of all of the
+# regular files under it does not exceed a specified size, and if it does
+# deletes enough of the least-recently accessed files under it so that the
+# total size of all of the files is less than or equal to that specified
+# size.
+#
+# Copyright (C) James MacKay 2008
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+import os
+import os.path
+
+import audiofs.utilities as ut
+
+
+# Constants.
+
+# A list of the filename extensions of files that are NOT to be removed from
+# a cache as part of maintaining it.
+#
+# Note: XML files aren't removed because they're assumed to be catalogue
+# summary metadata files (which are expensive to rebuild, and so are only
+# rebuilt on demand.)
+_excludeExtensions = [ ".xml" ]
+
+
+# Functions.
+
+# Returns True iff the
+
+def isExcludedFromCacheRemoval(path):
+    """
+    Returns True iff the cache file with pathname 'path' is excluded from
+    being removed from a cache as part of maintaining that cache.
+    """
+    assert path is not None
+    (root, ext) = os.path.splitext(path)
+    return ext in _excludeExtensions
+
+
+# Classes.
+
+class Program(ut.ut_AbstractProgram):
+    """
+    Represents programs that maintain a cache directory.
+    """
+
+    def _usageMessage(self, progName, shortHelpOpts, longHelpOpts,
+                      helpOptionsDesc):
+
+        result = """
+usage: %(progName)s %(shortHelpOpts)s %(longHelpOpts)s [-l logfile] [-m min-file-size] max-size cache-dir
+
+where 'cache-dir' is the pathname of the cache directory
+that we are to maintain and 'max-size' is the maximum total
+size of all of the regular files under 'cache-dir'.
+'max-size' must be of the form 'nnnU' where 'nnn' is a
+positive integer (consisting of any number of digits) and
+'U' is one of these units specifiers:
+
+    'B' - bytes
+    'K' - kilobytes (where 1 kilobyte = 1024 bytes)
+    'M' - megabytes (where 1 megabyte = 1024 kilobytes)
+    'G' - gigabytes (where 1 gigabyte = 1024 megabytes)
+    'T' - terabytes (where 1 terabyte = 1024 gigabytes)
+%(helpOptionsDesc)s
+If the optional '-l' option is specified. followed by the
+pathname of a log file 'logfile' then information about the
+cache and how its maintenance proceeds will be appended to
+that file.
+
+If the optional '-m' option is specified then files whose
+size is less than 'min-file-size' will never be removed from
+the cache; otherwise files of any size can be removed.
+'min-file-size' is of the same form as 'max-size'. (Note that
+over (a potentially very long) period of time the cache can
+become filled with just small files if you use this option.)
+
+""" % { "progName": progName, "shortHelpOpts": shortHelpOpts,
+        "longHelpOpts": longHelpOpts, "helpOptionsDesc": helpOptionsDesc }
+        assert result
+        return result
+
+    def _shortOptions(self):
+        result = "l:m:"
+        assert result is not None
+        return result
+
+    def _buildInitialArgumentsMap(self):
+        result = { "logfile": os.devnull,
+                   "cacheDir": None,
+                   "maxSizeInBytes": None,
+                   "minFileSizeInBytes": 0 }
+        assert result is not None
+        return result
+
+    def _processOption(self, opt, val, argsMap):
+        assert opt
+        # 'val' may be None
+        assert argsMap is not None
+        result = True
+        if opt == "-l":
+            argsMap["logfile"] = val
+        elif opt == "-m":
+            minFileSizeInBytes = ut.ut_parseSpaceIntoBytes(val)
+            if minFileSizeInBytes is None:
+                result = False
+                self._fail("Invalid minimum removable file size '%s'." % val)
+            else:
+                argsMap["minFileSizeInBytes"] = minFileSizeInBytes
+        else:
+            result = self._handleUnknownOption(opt)
+        return result
+
+    def _processNonOptionArguments(self, args, argsMap):
+        assert args is not None
+        assert argsMap is not None
+        result = False
+        numArgs = len(args)
+        if numArgs == 2:
+            arg = args[0]
+            maxSizeInBytes = ut.ut_parseSpaceIntoBytes(arg)
+            if maxSizeInBytes is None:
+                self._fail("Invalid maximum cache size '%s'." % arg)
+            else:
+                argsMap["maxSizeInBytes"] = maxSizeInBytes
+                argsMap["cacheDir"] = args[1]
+                result = True
+        elif numArgs > 2:
+            self._fail("Too many arguments")
+        elif numArgs < 2:
+            self._fail("Too few arguments")
+        return result
+
+    def _execute(self, argsMap):
+        assert argsMap is not None
+        result = 0
+        cacheDir = argsMap["cacheDir"]
+        maxSize = argsMap["maxSizeInBytes"]
+        logfile = argsMap["logfile"]
+        minFileSize = argsMap["minFileSizeInBytes"]
+
+        cdir = ut.ut_expandedAbsolutePathname(cacheDir)
+        if os.path.isdir(cdir):
+            logOut = open(logfile, 'a')
+            try:
+                ut.ut_maintainCacheDirectorySize(maxSize, cdir, logOut,
+                                minFileSize, isExcludedFromCacheRemoval)
+            finally:
+                logOut.close()
+        elif os.path.lexists(cdir):
+            result = 2
+            self._fail("The cache directory '%s' isn't a directory" %
+                       cacheDir)
+        else:
+            result = 3
+            self._fail("The cache directory '%s' doesn't exist" % cacheDir)
+        assert result >= 0
+        return result
+
+
+# Main program.
+
+Program().run()

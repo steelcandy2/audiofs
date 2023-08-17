@@ -1,0 +1,200 @@
+#!/usr/bin/env python
+#
+# Copyright (C) James MacKay 2010
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+from audiofs import config, musicfs
+import audiofs.utilities as ut
+
+import os.path
+import sys
+
+# Constants
+
+_conf = config.obtain()
+
+# The formats in which we output server information.
+_defaultFmt = "%s: %s:%i"
+_compactFmt = "%s:%s:%i"
+
+# The bits used in building a server selector index.
+_localBit = 1
+_radioBit = 2
+_plainBit = 4
+
+
+# Functions.
+
+def allSelector(desc):
+    """
+    Returns True for all servers.
+    """
+    return True
+
+def noneSelector(desc):
+    """
+    Returns False for all servers.
+    """
+    return False
+
+def localSelector(desc):
+    """
+    Returns True iff the MPD server described by 'desc' is a local
+    server.
+    """
+    return _conf.isLocalMpdServer(desc)
+
+def radioSelector(desc):
+    """
+    Returns True iff the MPD server described by 'desc' is
+    """
+    return _conf.isRadioMpdServer(desc)
+
+def plainSelector(desc):
+    """
+    Returns True iff the MPD server described by 'desc' is
+    """
+    return not _conf.isRadioMpdServer(desc)
+
+def localRadioSelector(desc):
+    """
+    Returns True iff the MPD server described by 'desc' is
+    """
+    return localSelector(desc) and radioSelector(desc)
+
+def localPlainSelector(desc):
+    """
+    Returns True iff the MPD server described by 'desc' is
+    """
+    return localSelector(desc) and plainSelector(desc)
+
+
+# Constants, part 2.
+
+_selectors = [
+    allSelector,
+    localSelector,
+    radioSelector,
+    localRadioSelector,
+    plainSelector,
+    localPlainSelector,
+    noneSelector,   # can't be both plain and radio server
+    noneSelector]   # can't be both plain and radio server
+
+# Classes.
+
+class Program(ut.ut_AbstractProgram):
+    """
+    Represents a program that outputs information about all of the MPD
+    servers (that we know about), or some subset of those servers.
+    """
+
+    def _usageMessage(self, progName, shortHelpOpts, longHelpOpts,
+                      helpOptionsDesc):
+        result = """
+usage: %(progName)s %(shortHelpOpts)s %(longHelpOpts)s [-c] [-r] [-p] [-l]
+
+which outputs information about (a subset of) all of the MPD
+servers that are configured in the audiofs configuration files.
+
+By default information about all MPD servers is output. But if
+the optional '-r' option is specified then only information
+about radio servers is output; if the optional '-p' option is
+specified then only information about "plain" (that is, non-
+radio) servers is output; and if the optional '-l' option is
+specified then only information about local servers (that is,
+servers running on the same host that the command was executed
+on) is output.
+
+The '-r', '-p' and '-l' options are not mutually exclusive.
+For a server's information to be output it must satisfy all of
+the options, though, so, for example, if both the '-r' and '-l'
+options are specified then only local radio servers'
+information will be output. (Thus nothing will ever be output
+whenever both the '-r' and '-p' options are specified.)
+
+Information about each server is contained on one line. By
+default each line is of the format
+
+    id: host:port
+
+but if the optional '-c' option is specified then each line
+has the more compact (and regular) format
+
+    id:host:port
+%(helpOptionsDesc)s""" % {
+        "progName": progName, "shortHelpOpts": shortHelpOpts,
+        "longHelpOpts": longHelpOpts, "helpOptionsDesc": helpOptionsDesc }
+        assert result
+        return result
+
+    def _shortOptions(self):
+        result = "rplc"
+        assert result is not None
+        return result
+
+    def _buildInitialArgumentsMap(self):
+        result = {
+            "lineFmt": _defaultFmt,
+            "selectorIndex": 0
+        }
+        assert result is not None
+        return result
+
+    def _processOption(self, opt, val, argsMap):
+        assert opt
+        # 'val' may be None
+        assert argsMap is not None
+        result = True
+        if opt == "-c":
+            argsMap["lineFmt"] = _compactFmt
+        elif opt == "-l":
+            argsMap["selectorIndex"] |= _localBit
+        elif opt == "-r":
+            argsMap["selectorIndex"] |= _radioBit
+        elif opt == "-p":
+            argsMap["selectorIndex"] |= _plainBit
+        else:
+            result = self._handleUnknownOption(opt)
+        return result
+
+    def _processNonOptionArguments(self, args, argsMap):
+        assert args is not None
+        assert argsMap is not None
+        result = True
+        if len(args):
+            self._fail("Too many arguments")
+            result = False
+        return result
+
+    def _execute(self, argsMap):
+        assert argsMap is not None
+        result = 0
+        lineFmt = argsMap["lineFmt"]
+        selector = _selectors[argsMap["selectorIndex"]]
+        for id in _conf.allMpdServerIds():
+            desc = _conf.mpdServerDescription(id)
+            assert desc is not None
+            if selector(desc):
+                (host, port) = _conf.mpdServer(desc)
+                print lineFmt % (id, host, port)
+        assert result >= 0
+        return result
+
+
+# Main program.
+
+Program().run()

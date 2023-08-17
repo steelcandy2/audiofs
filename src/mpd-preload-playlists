@@ -1,0 +1,460 @@
+#!/usr/bin/env python
+#
+# Copyright (C) James MacKay 2009
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+from audiofs import mpd, musicfs, config
+
+import audiofs.utilities as ut
+
+import os.path
+
+
+# Constants.
+
+_conf = config.obtain()
+
+
+# The number of audio files before and after the current one that are
+# preloaded by default for each server.
+_defaultNumberBefore = 0
+_defaultNumberAfter = 10
+
+# Valid non-integer values for the values associated with our program's
+# '-a' and '-b' options.
+_allOptionArgument = "all"
+
+# Valid values for a program's "parallelism" argument.
+_serialParallelism = "serial"
+_serverParallelism = "parallel across servers"
+_fullParallelism = "fully parallel"
+
+
+# Classes.
+
+class Program(mpd.mp_AbstractMpdProgram):
+    """
+    Represents programs that preload some or all of the audio files currently
+    in some or all of the MPD servers' playlists.
+    """
+
+    def _usageMessage(self, progName, shortHelpOpts, longHelpOpts,
+                      helpOptionsDesc):
+        result = """
+usage: %(progName)s %(shortHelpOpts)s %(longHelpOpts)s [-a num] [-b num] [-p | -P] [server-id ...]
+
+which preloads some or all of the audio files in the playlists
+of the local MPD servers whose server IDs match one of the
+'server-id's, or of all of the local MPD servers if no
+'server-id' arguments are specified.
+
+A given server's audio files are always preloaded in this
+order: the current audio file, then, in order, any audio
+files after the current one that are to be preloaded, and
+then, in reverse order, any audio files before the current one
+that are to be preloaded. (If a server's playlist doesn't have
+a current audio file then the first file in the playlist will
+be treated as the current one by this program.)
+
+The optional '-a' option specifies how many audio files after
+the current one are preloaded for each MPD server: by default
+%(defaultNumberAfter)i are preloaded, but if the '-a' option
+is specified then all of them are preloaded if 'num' is the
+word '%(allArg)s', and 'num' are preloaded if 'num' is a non-negative
+integer.
+
+The optional '-b' option specifies how many audio files before
+the current one are preloaded for each MPD server: by default
+%(defaultNumberBefore)i are preloaded, but if the '-b' option
+is specified then all of them are preloaded if 'num' is the
+word '%(allArg)s', and 'num' are preloaded if 'num' is a non-negative
+integer.
+
+If the optional '-p' option is specified then one audio file
+per server will be preloaded at the same time, and if the
+optional '-P' option is specified then all of the audio files
+for all of the servers will be preloaded at the same time. By
+default only one audio file is preloaded at a time across all
+of the servers.
+%(helpDesc)s""" % { "progName": progName, "shortHelpOpts": shortHelpOpts,
+            "longHelpOpts": longHelpOpts, "helpDesc": helpOptionsDesc,
+            "defaultNumberBefore": _defaultNumberBefore,
+            "defaultNumberAfter": _defaultNumberAfter,
+            "allArg": _allOptionArgument
+        }
+        assert result
+        return result
+
+    def _shortOptions(self):
+        result = "a:b:pP"
+        assert result is not None
+        return result
+
+    def _buildInitialArgumentsMap(self):
+        result = {
+            "numBefore": _defaultNumberBefore,
+            "numAfter": _defaultNumberAfter,
+            "serverIds": None,
+            "parallelism": _serialParallelism
+        }
+        assert result is not None
+        return result
+
+    def _processOption(self, opt, val, argsMap):
+        assert opt
+        # 'val' may be None
+        assert argsMap is not None
+        result = True
+        if opt == "-p":
+            if argsMap["parallelism"] != _fullParallelism:
+                argsMap["parallelism"] = _serverParallelism
+            else:
+                result = False
+                self._fail("Can't specify both the '-p' and '-P' options")
+        if opt == "-P":
+            if argsMap["parallelism"] != _serverParallelism:
+                argsMap["parallelism"] = _fullParallelism
+            else:
+                result = False
+                self._fail("Can't specify both the '-p' and '-P' options")
+        elif opt == "-a":
+            if val == _allOptionArgument:
+                argsMap["numAfter"] = -1  # indicates "all"
+            else:
+                try:
+                    num = ut.ut_parseInt(val, 0)
+                    argsMap["numAfter"] = num
+                except ValueError:
+                    result = False
+                    self._fail("'-a' must be followed by a non-negative "
+                        "integer or the word\n'%s', and '%s' isn't "
+                        "either" % (_allOptionArgument, val))
+        elif opt == "-b":
+            if val == _allOptionArgument:
+                argsMap["numBefore"] = -1  # indicates "all"
+            else:
+                try:
+                    num = ut.ut_parseInt(val, 0)
+                    argsMap["numBefore"] = num
+                except ValueError:
+                    result = False
+                    self._fail("'-b' must be followed by a non-negative "
+                        "integer or the word\n'%s', and '%s' isn't "
+                        "either" % (_allOptionArgument, val))
+        else:
+            result = self._handleUnknownOption(opt)
+        return result
+
+    def _processNonOptionArguments(self, args, argsMap):
+        assert args is not None
+        assert argsMap is not None
+        result = True
+        if args:
+            argsMap["serverIds"] = args
+        return result
+
+    def _execute(self, argsMap):
+        #self._debug("---> in mpd-preload-playlists' _execute() method")
+        assert argsMap is not None
+        result = 0
+        serverIds = argsMap["serverIds"]
+        if serverIds is None:
+            descs = self._allLocalServerDescriptions()
+            assert descs is not None
+        else:
+            descs = self._allMatchingLocalServerDescriptions(serverIds)
+            if descs is None:
+                # _fail() has already been called.
+                result = 1
+
+        if result == 0:
+            #self._debug("result == 0 ...")
+            numBefore = argsMap["numBefore"]
+            assert numBefore >= -1
+            numAfter = argsMap["numAfter"]
+            assert numAfter >= -1
+            #self._debug("num before = %i, num after = %i" % (numBefore, numAfter))
+            playlists = self._playlistSnapshotsFor(descs)
+            #self._debug("playlists = [%s]" % "; ".join([str(x) for x in playlists]))
+            parallelism = argsMap["parallelism"]
+            if parallelism == _serialParallelism:
+                self._preloadSerially(playlists, numBefore, numAfter)
+            else:
+                doFast = (parallelism == _fullParallelism)
+                self._preloadInParallel(playlists, numBefore, numAfter,
+                                        doFast)
+        assert result >= 0
+        return result
+
+    def _allLocalServerDescriptions(self):
+        """
+        Returns a list of descriptions of all of the local MPD servers.
+
+        See config.conf_Configuration.mpdServerDescription().
+        """
+        #self._debug("---> in _allLocalServerDescriptions()")
+        result = _conf.allMpdServerDescriptions()
+        result = [x for x in result if _conf.isLocalMpdServer(x)]
+        #self._debug("    returning descriptions of %i local servers" % len(result))
+        assert result is not None
+        return result
+
+    def _allMatchingLocalServerDescriptions(self, serverIds):
+        """
+        Returns a list of descriptions of all of the local MPD servers whose
+        server ID matches one of the IDs in 'serverIds', or returns None (and
+        reports an error) if one or more of the IDs in 'serverIds' doesn't
+        match the server ID of an MPD server.
+
+        Note: a warning message is output for each ID in 'serverIds' that
+        matches the ID of an MPD server that isn't a local server, but such
+        IDs won't cause us to report an error or return None.
+        """
+        #self._debug("---> in _allMatchingLocalServerDescriptions([%s])" % ", ".join(serverIds))
+        result = []
+        badMsgs = []
+        for matchId in serverIds:
+            #self._debug("    looking for a match to '%s' ..." % matchId)
+            (id, desc) = self._smartMatchMpdServerIds(matchId)
+            if id is not None:
+                if _conf.isLocalMpdServer(desc):
+                    result.append(desc)
+                else:
+                    self._warn("'%s' matches the server ID '%s' of a "
+                        "non-local MPD server" % (matchId, id))
+            else:
+                #self._debug("    didn't match anything (uniquely, anyway)")
+                badMsgs.append(desc)
+        numBadMsgs = len(badMsgs)
+        #self._debug("    were %i bad server IDs" % numBadMsgs)
+        if numBadMsgs > 0:
+            result = None
+            if numBadMsgs == 1:
+                #self._debug("    using single bad message")
+                msg = badMsgs[0]
+            else:
+                #self._debug("    using multiple bad messages")
+                msg = "%i of the server IDs are invalid:\n%s" % (numBadMsgs,
+                        "\n".join(badMsgs))
+            self._fail(msg)
+        # 'result' may be None
+        #self._debug("    is result None? %s" % str(result is None))
+        return result
+
+    def _playlistSnapshotsFor(self, serverDescs):
+        """
+        Returns a list of mp_PlaylistSnapshots that represent snapshots of
+        the playlists of the MPD servers whose descriptions are in
+        'serverDescs'.
+
+        Note: the result may not contain a snapshot for each server, for
+        example if server doesn't have a current playlist.
+        """
+        #self._debug("---> in _playlistSnapshotsFor(serverDescs)")
+        result = []
+        assert serverDescs is not None
+        for desc in serverDescs:
+            #self._debug("    getting server from description")
+            server = mpd.mp_createMpdServerFromDescription(desc)
+            pl = server.playlistSnapshot()
+            #self._debug("    was playlist None? %s" % str(pl is None))
+            if pl is not None:
+                result.append(pl)
+        assert result is not None
+        assert len(result) <= len(serverDescs)
+        return result
+
+    def _preloadInParallel(self, playlists, numBefore, numAfter, doFast):
+        """
+        Preloads audio files from the mp_PlaylistSnapshots in 'playlists' in
+        parallel:
+            - if 'doFast' is True then all audio files in all of the
+              playlists will be preloaded concurrently
+            - if 'doFast' is False then audio files from a given playlist
+              are preloaded one at a time, but the audio files in different
+              playlists can (and will) be preloaded concurrently
+
+        For each playlist 'numBefore' files before and 'numAfter' files after
+        the current file - as well as the current file itself - are
+        preloaded.
+        """
+        #self._debug("---> in _preloadInParallel(playlists (%i), %i, %i, %s)" % (len(playlists), numBefore, numAfter, str(doFast)))
+        assert playlists is not None
+        assert numBefore >= -1
+        assert numAfter >= -1
+        rootDir = _conf.rootDir
+        #self._debug("    root music dir = [%s]" % rootDir)
+        join = os.path.join
+        seenPaths = set()
+        pathLists = []  # a list of lists of pathnames
+        for pl in playlists:
+            #self._debug("    processing a new playlist ...")
+            newPaths = []
+            indices = self._buildPreloadIndicesList(pl, numBefore, numAfter)
+            paths = pl.allPathnames()
+            for i in indices:
+                path = paths[i]
+                #self._debug("    adding path [%s] at index %i" % (path, i))
+                if path not in seenPaths:
+                    #self._debug("    haven't already seen this path, so adding it")
+                    seenPaths.add(path)
+                    newPaths.append(join(rootDir, path))
+                # otherwise we'll already be preloading 'path', and earlier
+            pathLists.append(newPaths)
+            #self._debug("    there are now %i lists of paths to preload in parallel" % len(pathLists))
+        for lst in pathLists:
+            #self._debug("    potentially preloading a list of paths ...")
+            if lst:
+                #self._debug("    yes, there are paths to preload")
+                self._reallyPreloadFiles(lst, doFast)
+                #self._debug("    finished setting paths to preload in background")
+
+    def _preloadSerially(self, playlists, numBefore, numAfter):
+        """
+        Preloads audio files from all of the mp_PlaylistSnapshots in
+        'playlists' serially: at most one file from any of the playlists
+        will be being preloaded at any given time.
+
+        For each playlist 'numBefore' files before and 'numAfter' files after
+        the current file - as well as the current file itself - are
+        preloaded.
+        """
+        #self._debug("---> in _preloadSerially(playlists (%i), %i, %i)" % (len(playlists), numBefore, numAfter))
+        assert playlists is not None
+        assert numBefore >= -1
+        assert numAfter >= -1
+        pathLists = []  # a list of lists of pathnames
+        listLengths = []
+        for pl in playlists:
+            #self._debug("    processing a new playlist ...")
+            paths = pl.allPathnames()
+            indices = self._buildPreloadIndicesList(pl, numBefore, numAfter)
+            newPaths = [paths[i] for i in indices]
+            pathLists.append(newPaths)
+            listLengths.append(len(newPaths))
+            #self._debug("    added a new list of paths of length %i" % len(newPaths))
+            #self._debug("    added a new list of paths of length %i: [%s]" % (len(newPaths), ", ".join([str(x) for x in newPaths]))
+        assert len(listLengths) == len(pathLists)
+
+        # Build a single list of pathnames from the first item in each list
+        # in 'pathLists', then the second item in each list, etc.
+        #self._debug("    building single list of pathnames ...")
+        rootDir = _conf.rootDir
+        #self._debug("    music root dir = [%s]" % rootDir)
+        join = os.path.join
+        maxListLen = 0
+        if pathLists:
+            maxListLen = max([len(lst) for lst in pathLists])
+        #self._debug("    maxListLen = %i" % maxListLen)
+        seenPaths = set()
+        allPaths = []
+        listInds = range(len(pathLists))
+        #self._debug("    initially listInds = %s" % self._printableIndexList(listInds))
+        for i in range(maxListLen):
+            #self._debug("    potentially adding the path at index %i in each list" % i)
+            newListInds = None
+            for li in listInds:
+                #self._debug("    processing the %i'th path in the %i'th list" % (i + 1, li + 1))
+                lst = pathLists[li]
+                if i < listLengths[li]:
+                    path = lst[i]
+                    #self._debug("    potentially adding path [%s]" % path)
+                    if path not in seenPaths:
+                        #self._debug("    haven't already seen this path, so adding it")
+                        seenPaths.add(path)
+                        allPaths.append(join(rootDir, path))
+                else:  # we've reached the end of the ('li'+1)th list
+                    #self._debug("    no more paths in the %i'th list" % (li + 1))
+                    if newListInds is None:
+                        newListInds = listInds[:]
+                    newListInds.remove(li)
+            if newListInds is not None:
+                #self._debug("    reached the end of one or more lists:")
+                listInds = newListInds
+                #self._debug("    now listInds = %s" % self._printableIndexList(listInds))
+        if allPaths:
+            #self._debug("    preloading %i paths in the background" % len(allPaths))
+            self._reallyPreloadFiles(allPaths)
+            #self._debug("    finished setting paths to preload in background")
+
+    def _buildPreloadIndicesList(self, snap, numBefore, numAfter):
+        """
+        Given the mp_PlaylistSnapshot 'snap' and the number of files
+        'numBefore' and 'numAfter' before and after the playlist's current
+        file that are to be preloaded, returns a list of 0-based indices
+        into 'snap''s list of pathnames of the files that should be
+        preloaded, in the order that they should be preloaded.
+        """
+        #self._debug("---> in _buildPreloadIndicesList(snap, %i, %i)" % (numBefore, numAfter))
+        assert snap is not None
+        assert numBefore >= -1
+        assert numAfter >= -1
+        result = []
+        paths = snap.allPathnames()
+        numPaths = len(paths)
+        #self._debug("    numPaths = %i" % numPaths)
+        currIndex = snap.currentItemIndex(0)
+            # we use the first item if there's no 'real' current one
+        assert currIndex >= 0
+        #self._debug("    curr item index = %i" % currIndex)
+
+        # First add the index of the current item, followed by those of the
+        # 'numAfter' items after it, in order.
+        #self._debug("    starting with indices of current and after items")
+        result = range(numPaths)[currIndex:]
+        #self._debug("    result = %s" % self._printableIndexList(result))
+        if numAfter >= 0:
+            result = result[:numAfter + 1]
+            #self._debug("    result = %s" % self._printableIndexList(result))
+
+        # Then the indices of the 'numBefore' items before the current
+        # item, in REVERSE order.
+        if numBefore != 0:
+            #self._debug("    are paths before the current one to add")
+            indices = range(currIndex)
+            #self._debug("    indices = %s" % self._printableIndexList(indices))
+            if numBefore > 0:
+                indices = indices[-numBefore:]
+                    # last 'numBefore' indices if numBefore > 0
+                #self._debug("    indices = %s (not adding all)" % self._printableIndexList(indices))
+            indices.reverse()
+            #self._debug("    indices = %s (after reverse)" % self._printableIndexList(indices))
+            result.extend(indices)
+        #self._debug("    result = %s (final)" % self._printableIndexList(result))
+        assert result is not None
+        return result
+
+    def _reallyPreloadFiles(self, paths, doFast = False):
+        """
+        Really preloads the files whose pathnames are in 'paths'.
+
+        See ut.ut_preloadFilesInBackground().
+        """
+        #self._debug("---> in _reallyPreloadFiles([%s], doFast = %s)" % (", ".join(paths), str(doFast)))
+        ut.ut_preloadFilesInBackground(paths, doFast)
+
+    def _printableIndexList(self, lst):
+        """
+        Returns a string that is a printable representation of 'lst', which
+        is assumed to be a list of integers.
+        """
+        assert lst is not None
+        return "[%s]" % ", ".join([str(x) for x in lst])
+
+
+# Main program.
+
+Program().run()

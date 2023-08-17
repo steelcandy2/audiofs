@@ -1,0 +1,310 @@
+#!/usr/bin/env python
+#
+# Copyright (C) James MacKay 2008
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+import sys
+
+from audiofs import config, musicfs
+import audiofs.utilities as ut
+
+
+# Constants.
+
+_conf = config.obtain()
+
+
+# The valid name parts of the name-value pairs associated with '-i' and
+# '-x' options.
+_kindName = "kind"
+_formatName = "format"
+_genreName = "genre"
+_validNames = [_kindName, _formatName, _genreName]
+
+# The separator between the name and value parts of name-value pairs.
+_nameValueSep = ":"
+
+
+# Classes.
+
+class Program(ut.ut_AbstractProgram):
+    """
+    Represents programs that create playlists of randomly-selected audio
+    files.
+    """
+
+    def _usageMessage(self, progName, shortHelpOpts, longHelpOpts,
+                      helpOptionsDesc):
+        return """
+usage: %(progName)s %(shortHelpOpts)s %(longHelpOpts)s [-n num] [-a] [-i name:value] [-x name:value] [-r base] [-R how]
+
+which outputs to standard output a playlist (in raw playlist
+format) of randomly-selected audio files.
+%(helpOptionsDesc)s
+By default %(defaultSize)i audio files will appear in the playlist, but the
+'-n' option can be used to specify that 'num' audio files will
+appear in it instead, where 'num' must be greater than zero.
+(The playlist may be shorter if there aren't enough audio
+files that meet the selection criteria.)
+
+By default only audio files that are originals - that is, are
+not just reencodings of another audio file - are eligible to
+appear in the playlist. But if the '-a' option is specified
+then all audio files are eligible.
+
+
+Selection Criteria
+------------------
+
+The optional '-i' and '-x' options can be used to specify
+selection criteria: that is, to specify which audio files are
+or are not eligible to appear in the playlist. Both '-i' and
+'-x' options can appear multiple times in the same command
+line, and the value associated with both options is of the
+form
+
+    name:value
+
+where 'name' specifies what aspect of the audio file the
+selection criterion applies to, and can be one of:
+
+    %(validNames)s
+
+and the 'value' part is the value that the named aspect of an
+audio file must match in order for the selection criterion to
+apply to it.
+
+A '-i' option specifies a criterion for including an audio
+file to be eligible to be included in the playlist. Multiple
+'-i' options are "anded" together, so for example the options
+
+    -i format:mp3 -i genre:Rock
+
+would include for eligibility all audio files in the MP3
+format whose genre is "Rock". If no '-i' options are specified
+then all original audio files are eligible for inclusion.
+
+A '-x' option specifies a criterion for excluding an audio
+file that is explicitly (by a '-i' option) or implicitly (if
+there are no '-i' options at all in the command line) included
+for eligibility to appear in a playlist. Thus the option
+
+    -x format:flac
+
+would exclude audio files in the FLAC format from appearing in
+the playlist.
+
+Regardless of the order in which '-i' and '-x' options appear
+in a command line all of the '-i' options are applied before
+all of the '-x' options. So for example the options
+
+    -x kind:albums -i genre:Comedy
+
+would mean that all audio files whose genre is "Comedy" would
+be eligible to appear in the playlist except the ones that
+contain the contents of entire albums, and
+
+    -i kind:albums -x kind:albums
+
+would mean that there are no audio files eligible to appear in
+the playlist.
+
+
+Ratings
+-------
+
+If the optional '-r' option is specified then the ratings for
+audio files are obtained from the ratings file whose basename,
+after removing the ratings file extension %(ratingsFileExtension)s,
+is given by 'base'. Otherwise ratings are obtained from the
+main ratings file: the one with basename '%(mainRatingsBasename)s'.
+
+Exactly how an audio file's rating is converted into how
+likely it is to be in the playlist can be specified using the
+optional '-R' option. It's argument 'how' can be one of:
+
+    %(defaultName)s - a file has a number of chances equal to its
+              rating: one with rating 0 has no chance, and
+              one with rating 5 has 5 times the chance of one
+              with rating 1. This is also the method used if
+              no '-R' option is specified.
+
+    %(plusOneName)s - a file has a number of chances equal to its
+              rating plus one: one with rating 0 has one
+              chance, and one with rating 5 has 6 times the
+              chance of one with rating 0 (6 = (5+1) / (0+1))
+              and 3 (= (5+1) / (1+1)) times the chance of one
+              with rating 1.
+
+    %(minNamePrefix)s'n' - a file with rating 'r' has no chance if its rating
+             is less than 'n', and rating 'r - n + 1' otherwise.
+
+    %(okName)s - the same as 'min%(okMin)i'
+
+    %(goodName)s - the same as 'min%(goodMin)i'
+
+    %(betterName)s - the same as 'min%(betterMin)i'
+
+    %(bestName)s - the same as 'min%(bestMin)i'
+
+    %(equalName)s - all files have exactly one chance regardless of
+            rating, including those files with rating 0.
+
+    %(nonzeroEqualName)s - a file with rating 0 has no chances, and
+                   any other file has exactly one chance.
+
+""" % { "progName": progName, "shortHelpOpts": shortHelpOpts,
+        "longHelpOpts": longHelpOpts, "helpOptionsDesc": helpOptionsDesc,
+        "defaultSize": _conf.defaultPlaylistSize,
+        "ratingsFileExtension": config.fullRatingsFileExtension,
+        "mainRatingsBasename": _conf.mainRatingsBasename,
+        "validNames": ", ".join(_validNames),
+        "defaultName": musicfs.defaultRatingConverterName,
+        "plusOneName": musicfs.plusOneRatingConverterName,
+        "equalName": musicfs.equalRatingConverterName,
+        "nonzeroEqualName": musicfs.nonzeroEqualRatingConverterName,
+        "minNamePrefix": musicfs.minValueRatingConverterNamePrefix,
+        "okName": musicfs.okRatingConverterName,
+        "okMin": musicfs.okMinRating,
+        "goodName": musicfs.goodRatingConverterName,
+        "goodMin": musicfs.goodMinRating,
+        "betterName": musicfs.betterRatingConverterName,
+        "betterMin": musicfs.betterMinRating,
+        "bestName": musicfs.bestRatingConverterName,
+        "bestMin": musicfs.bestMinRating }
+        assert result
+        return result
+
+    def _shortOptions(self):
+        result = "an:i:x:r:R:"
+        assert result is not None
+        return result
+
+    def _buildInitialArgumentsMap(self):
+        result = { "criteria": musicfs.fs_PlaylistSelectionCriteria(),
+            "ratingsBasename": None,
+            "ratingToChancesFunc": None,
+            "playlistSize": None
+        }
+        assert result is not None
+        return result
+
+    def _processOption(self, opt, val, argsMap):
+        assert opt
+        # 'val' may be None
+        assert argsMap is not None
+        result = True
+        criteria = argsMap["criteria"]
+        if opt == "-a":
+            criteria.fs_setMustBeOriginal(False)
+        elif opt == "-n":
+            try:
+                argsMap["playlistSize"] = int(val)
+            except:
+                self._fail("'%s' is not a valid playlist size" % val)
+                result = False
+        elif opt == "-i":
+            (name, value) = self._parseNameValueOptionValue(val)
+            if name is None or value is None:
+                result = False  # error is already reported
+            elif name == _kindName:
+                criteria.fs_includeKind(value)
+            elif name == _formatName:
+                criteria.fs_includeFormat(value)
+            else:
+                assert name == _genreName
+                criteria.fs_includeGenre(value)
+        elif opt == "-x":
+            (name, value) = self._parseNameValueOptionValue(val)
+            if name is None or value is None:
+                result = False  # error is already reported
+            elif name == _kindName:
+                criteria.fs_excludeKind(value)
+            elif name == _formatName:
+                criteria.fs_excludeFormat(value)
+            else:
+                assert name == _genreName
+                criteria.fs_excludeGenre(value)
+        elif opt == "-r":
+            if val in _conf.allRatingsBasenames:
+                argsMap["ratingsBasename"] = val
+            else:
+                result = False
+                self._fail("'%s' is not the base name of a known ratings "
+                           "file." % val)
+        elif opt == "-R":
+            func = musicfs.fs_ratingToChancesConverter(val)
+            if func is not None:
+                argsMap["ratingToChancesFunc"] = func
+            else:
+                result = False
+                self._fail("'%s' is not a valid rating to chances "
+                           "conversion method name" % val)
+        else:
+            result = self._handleUnknownOption(opt)
+        return result
+
+    def _processNonOptionArguments(self, args, argsMap):
+        assert args is not None
+        assert argsMap is not None
+        result = True
+        if len(args) != 0:
+            result = False
+            self._fail("Too many arguments")
+        return result
+
+    def _execute(self, argsMap):
+        assert argsMap is not None
+        result = 0
+        mm = musicfs.fs_MusicMetadataManager()
+        crit = argsMap["criteria"]
+        sz = argsMap["playlistSize"]
+        base = argsMap["ratingsBasename"]
+        r2c = argsMap["ratingToChancesFunc"]
+        mm.fs_createRandomPlaylist(sys.stdout, crit, sz, base, r2c)
+        assert result >= 0
+        return result
+
+    def _parseNameValueOptionValue(self, optVal):
+        """
+        Attempts to parse the value 'optVal' associated with an '-i' or '-x'
+        option in a command line passed to this program, returning a
+        (name, value) pair representing the two parts of 'optVal' if it's
+        valid, and returning (None, None) after reporting the error(s)
+        otherwise.
+        """
+        assert optVal is not None
+        result = (None, None)
+        parts = optVal.split(_nameValueSep, 1)
+        numParts = len(parts)
+        if numParts == 2:
+            name = parts[0]
+            if name in _validNames:
+                result = (name, parts[1])
+            else:
+                self._fail("'%s' is not a valid name part of a name-value "
+                    "pair. The valid names are: %s" %
+                    (name, ", ".join(_validNames)))
+        else:
+            self._fail("'%s' is not a valid name-value pair." % optVal)
+        assert result is not None
+        assert len(result) == 2
+        return result
+
+
+# Main program.
+
+Program().run()

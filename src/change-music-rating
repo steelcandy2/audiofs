@@ -1,0 +1,151 @@
+#!/usr/bin/env python
+#
+# Copyright (C) James MacKay 2009
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+from audiofs import config, musicfs
+import audiofs.utilities as ut
+
+
+# Constants
+
+_conf = config.obtain()
+
+baseDir = ut.ut_really(_conf.baseDir)
+
+
+# Classes.
+
+class Program(ut.ut_AbstractProgram):
+    """
+    Represents a program that changes the ratings of one or more music
+    files, provided they're under the music directory.
+    """
+
+    def _usageMessage(self, progName, shortHelpOpts, longHelpOpts,
+                      helpOptionsDesc):
+
+        result = """
+usage: %(progName)s %(shortHelpOpts)s %(longHelpOpts)s (-d | -i | -s) amount path ...
+
+which causes the rating associated with each of the music files
+whose pathname is specified to be changed based on 'amount'.
+
+Exactly one of the '-d', '-i' or '-s' options must be specified.
+If the '-d' option is specified then the files' ratings are
+decreased by 'amount' (to a minimum value of 1); if the '-i'
+option is specified then the files' ratings are increased by
+'amount' (to a maximum value of %(maxRating)i); and if the '-s'
+option is specified then the files' ratings are set to 'amount'
+(or to the closest value between 0 and %(maxRating)i inclusive).
+%(helpOptionsDesc)s
+""" % { "progName": progName, "shortHelpOpts": shortHelpOpts,
+        "longHelpOpts": longHelpOpts, "helpOptionsDesc": helpOptionsDesc,
+        "maxRating": config.maxRating }
+        assert result
+        return result
+
+    def _shortOptions(self):
+        result = "d:i:s:"
+        assert result is not None
+        return result
+
+    def _buildInitialArgumentsMap(self):
+        result = { "paths": None, "cmd": None, "amount": None }
+        assert result is not None
+        return result
+
+    def _processOption(self, opt, val, argsMap):
+        assert opt
+        # 'val' may be None
+        assert argsMap is not None
+        result = True
+        if argsMap["cmd"] is not None:
+            result = False
+            self._fail("Exactly one of the '-d', '-i' or '-s' options "
+                        "can be specified")
+        else:
+            cmd = None
+            if opt == "-d":
+                cmd = "-"
+            elif opt == "-s":
+                cmd = ""
+            elif opt == "-i":
+                cmd = "+"
+            if cmd is not None:
+                try:
+                    amount = ut.ut_parseInt(val, 0)
+                except ValueError:
+                    result = False
+                    self._fail("The amount '%s' to be used in changing the "
+                        "files' ratings\nmust be a non-negative integer" %
+                        val)
+            else:
+                result = self._handleUnknownOption(opt)
+        if result:
+            argsMap["cmd"] = cmd
+            argsMap["amount"] = amount
+        return result
+
+    def _processNonOptionArguments(self, args, argsMap):
+        assert args is not None
+        assert argsMap is not None
+        result = True
+        numArgs = len(args)
+        if argsMap["cmd"] is None:
+            # We report this here rather than in _execute() so that our usage
+            # message is output too.
+            result = False
+            self._fail("No '-d', '-i' or '-s' option was specified")
+        elif numArgs > 0:
+            argsMap["paths"] = args
+        else:
+            result = False
+            self._fail("No music file pathnames were specified")
+        return result
+
+    def _execute(self, argsMap):
+        assert argsMap is not None
+        result = 0
+        paths = argsMap["paths"]
+        amount = argsMap["amount"]
+        cmd = argsMap["cmd"]
+        mm = musicfs.fs_MusicMetadataManager()
+        if cmd == "+":
+            f = mm.fs_increaseRating
+        elif cmd == "-":
+            f = mm.fs_decreaseRating
+        else:
+            f = mm.fs_setRating
+
+        for p in paths:
+            #print "baseDir = [%s]" % baseDir
+            ap = ut.ut_removePathnamePrefix(ut.ut_really(p), baseDir)
+            if ap is not None:
+                #print "amount = [%s], path = [%s]" % (amount, ap)
+                f(amount, ap)
+            else:
+                # Note that we still process the remaining files.
+                result = 1
+                self._fail("The file '%s' isn't under\nthe base music "
+                    "directory '%s'" % (p, baseDir))
+        assert result >= 0
+        return result
+
+
+# Main program.
+
+Program().run()

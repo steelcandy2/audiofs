@@ -1,0 +1,715 @@
+#!/usr/bin/env python
+#
+# Copyright (C) James MacKay 2010
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+from audiofs import config, musicfs
+import audiofs.utilities as ut
+
+import os.path
+import sys
+
+# Constants
+
+_conf = config.obtain()
+
+
+# Classes.
+
+class OutputFormatter(object):
+    """
+    The interface implemented by all classes that can format this program's
+    output.
+    """
+
+    def formatStart(self):
+        """
+        Returns a string containing what is to be output before any of the
+        information about the unrated albums has been output.
+        """
+        raise NotImplementedError
+        assert result is not None
+
+    def formatArtistStart(self, artist):
+        """
+        Returns a string containing what is to be output at the start of
+        all of the unrated albums by the artist 'artist' (in a given music file
+        format, anyway).
+
+        Note: this method won't be called for artists with no unrated albums.
+        """
+        assert artist is not None
+        raise NotImplementedError
+        assert result is not None
+
+    def formatAlbum(self, artist, albumTitle):
+        """
+        Returns a string containing what is to be output for the album
+        titled 'albumTitle' by the artist 'artist' when only the album is to
+        be output (but none of its tracks' information).
+
+        Note: this method won't be called if the unrated tracks are to be
+        output too: when that's the case the formatAlbumStart(),
+        formatAlbumTrack() and formatAlbumEnd() methods will be called
+        instead.
+
+        See formatAlbumStart(), formatAlbumTrack(), formatAlbumEnd().
+        """
+        assert artist is not None
+        assert albumTitle is not None
+        raise NotImplementedError
+        assert result is not None
+
+    def formatAlbumStart(self, artist, albumTitle):
+        """
+        Returns a string containing what is to be output at the start of
+        the unrated album titled 'albumTitle' by the artist 'artist' (in a
+        given music file format, anyway).
+
+        Note: this method won't be called for albums with no unrated tracks.
+
+        See formatAlbumEnd(), formatAlbumTrack().
+        See formatAlbum().
+        """
+        assert artist is not None
+        assert albumTitle is not None
+        raise NotImplementedError
+        assert result is not None
+
+    def formatAlbumTrack(self, artist, albumTitle, trackTitle):
+        """
+        Returns a string containing what is to be output for the unrated
+        track titled 'trackTitle' on the album titled 'albumTitle' by the
+        artist 'artist'.
+
+        See formatAlbumStart(), formatAlbumEnd().
+        """
+        assert artist is not None
+        assert albumTitle is not None
+        assert trackTitle is not None
+        raise NotImplementedError
+        assert result is not None
+
+    def formatAlbumEnd(self, artist, albumTitle):
+        """
+        Returns a string containing what is to be output at the end of the
+        unrated album titled 'albumTitle' by the artist 'artist' (in a given
+        music file format, anyway).
+
+        Note: this method won't be called for albums with no unrated tracks.
+
+        See formatAlbumStart(), formatAlbumTrack().
+        See formatAlbum().
+        """
+        assert artist is not None
+        assert albumTitle is not None
+        raise NotImplementedError
+        assert result is not None
+
+    def formatArtistEnd(self, artist):
+        """
+        Returns a string containing what is to be output at the end of all
+        of the unrated albums by the artist 'artist' (in a given music file
+        format, anyway).
+
+        Note: this method won't be called for artists with no unrated albums.
+        """
+        assert artist is not None
+        raise NotImplementedError
+        assert result is not None
+
+    def formatEnd(self):
+        """
+        Returns a string containing what is to be output after all of the
+        information about all the unrated albums has been output.
+        """
+        raise NotImplementedError
+        assert result is not None
+
+class TextOutputFormatter(OutputFormatter):
+    """
+    The class of OutputFormatter that outputs information as plain text.
+    """
+
+    _indent = "    "
+    _artistFmt = "%s\n"
+    _albumFmt = _indent + "%s\n"
+    _trackFmt = _indent + _indent + "%s\n"
+
+    def formatStart(self):
+        result = ""
+        assert result is not None
+        return result
+
+    def formatArtistStart(self, artist):
+        result = self._artistFmt % artist
+        assert result is not None
+        return result
+
+    def formatAlbum(self, artist, albumTitle):
+        assert artist is not None
+        assert albumTitle is not None
+        result = self._albumFmt % albumTitle
+        assert result is not None
+        return result
+
+    def formatAlbumStart(self, artist, albumTitle):
+        assert artist is not None
+        assert albumTitle is not None
+        result = self._albumFmt % albumTitle
+        assert result is not None
+        return result
+
+    def formatAlbumTrack(self, artist, albumTitle, trackTitle):
+        assert artist is not None
+        assert albumTitle is not None
+        assert trackTitle is not None
+        result = self._trackFmt % trackTitle
+        assert result is not None
+        return result
+
+    def formatAlbumEnd(self, artist, albumTitle):
+        assert artist is not None
+        assert albumTitle is not None
+        result = ""
+        assert result is not None
+        return result
+
+    def formatArtistEnd(self, artist):
+        assert artist is not None
+        result = ""
+        assert result is not None
+        return result
+
+    def formatEnd(self):
+        result = ""
+        assert result is not None
+        return result
+
+class XmlOutputFormatter(OutputFormatter):
+    """
+    The class of OutputFormatter that outputs information as XML.
+    """
+
+    _indent = "    "
+    _artistFmt = _indent + "<artist name=\"%s\">\n"
+    _artistEnd = _indent + "</artist>\n"
+    _albumFmt      = _indent + _indent + "<album name=\"%s\"/>\n"
+    _albumStartFmt = _indent + _indent + "<album name=\"%s\">\n"
+    _albumEnd = _indent + _indent + "</album>\n"
+    _trackFmt = _indent + _indent + _indent + "<track name=\"%s\"/>\n"
+
+    def formatStart(self):
+        result = "<?xml version=\"1.0\"?>\n<unrated>\n"
+        assert result is not None
+        return result
+
+    def formatArtistStart(self, artist):
+        result = self._artistFmt % artist
+        assert result is not None
+        return result
+
+    def formatAlbum(self, artist, albumTitle):
+        assert artist is not None
+        assert albumTitle is not None
+        result = self._albumFmt % albumTitle
+        assert result is not None
+        return result
+
+    def formatAlbumStart(self, artist, albumTitle):
+        assert artist is not None
+        assert albumTitle is not None
+        result = self._albumStartFmt % albumTitle
+        assert result is not None
+        return result
+
+    def formatAlbumTrack(self, artist, albumTitle, trackTitle):
+        assert artist is not None
+        assert albumTitle is not None
+        assert trackTitle is not None
+        result = self._trackFmt % trackTitle
+        assert result is not None
+        return result
+
+    def formatAlbumEnd(self, artist, albumTitle):
+        assert artist is not None
+        assert albumTitle is not None
+        result = self._albumEnd
+        assert result is not None
+        return result
+
+    def formatArtistEnd(self, artist):
+        assert artist is not None
+        result = self._artistEnd
+        assert result is not None
+        return result
+
+    def formatEnd(self):
+        result = "</unrated>\n"
+        assert result is not None
+        return result
+
+class HtmlOutputFormatter(OutputFormatter):
+    """
+    The class of OutputFormatter that outputs information as (X)HTML.
+    """
+
+    _cssPathname = "unrated-albums.css"
+    _title = "Unrated Albums"
+    _indent = "    "
+    _artistFmt = "<div class=\"artist\">%s\n"
+    _artistEnd = "</div>\n"
+    _albumFmt      = _indent + "<div class=\"album\">%s</div>\n"
+    _albumStartFmt = _indent + "<div class=\"album\">%s\n"
+    _albumEnd = _indent + "</div>\n"
+    _trackFmt = _indent + _indent + "<div class=\"track\">%s</div>\n"
+
+    def formatStart(self):
+        parts = []
+        parts.append("<html>\n<head>\n%s<title>%s</title>\n" %
+                        (self._indent, self._title))
+        parts.append("%s<link media=\"all\" href=\"%s\" rel=\"stylesheet\"" %
+                        (self._indent, self._cssPathname))
+        parts.append(" type=\"text/css\">\n")
+        parts.append("</head>\n<body>\n\n")
+        parts.append("<div align=\"center\">\n")
+        parts.append("%s<h1 id=\"top\">%s</h1>\n</div>\n\n<hr />\n\n" %
+                        (self._indent, self._title))
+        result = "".join(parts)
+        assert result is not None
+        return result
+
+    def formatArtistStart(self, artist):
+        result = self._artistFmt % artist
+        assert result is not None
+        return result
+
+    def formatAlbum(self, artist, albumTitle):
+        assert artist is not None
+        assert albumTitle is not None
+        result = self._albumFmt % albumTitle
+        assert result is not None
+        return result
+
+    def formatAlbumStart(self, artist, albumTitle):
+        assert artist is not None
+        assert albumTitle is not None
+        result = self._albumStartFmt % albumTitle
+        assert result is not None
+        return result
+
+    def formatAlbumTrack(self, artist, albumTitle, trackTitle):
+        assert artist is not None
+        assert albumTitle is not None
+        assert trackTitle is not None
+        result = self._trackFmt % trackTitle
+        assert result is not None
+        return result
+
+    def formatAlbumEnd(self, artist, albumTitle):
+        assert artist is not None
+        assert albumTitle is not None
+        result = self._albumEnd
+        assert result is not None
+        return result
+
+    def formatArtistEnd(self, artist):
+        assert artist is not None
+        result = self._artistEnd
+        assert result is not None
+        return result
+
+    def formatEnd(self):
+        result = "\n</body>\n</html>\n"
+        assert result is not None
+        return result
+
+
+# Constants, part 2.
+
+_textFormatName = "text"
+_xmlFormatName = "xml"
+_htmlFormatName = "html"
+_defaultFormatName = _textFormatName
+
+_outputFormatters = {
+    _textFormatName: TextOutputFormatter(),
+    _xmlFormatName: XmlOutputFormatter(),
+    _htmlFormatName: HtmlOutputFormatter() }
+
+
+# Classes, part 2.
+
+class ProcessingException(Exception):
+    """
+    The class of exception thrown to indicate that some aspect of processing
+    a ratings file failed.
+    """
+    pass
+
+class RatingsFileProcessor(object):
+    """
+    Represents a class that processes the contents of a ratings file.
+    """
+
+    def __init__(self, dest, defaultRating, outputFormatter):
+        """
+        Initializes a new instance with the specified information.
+
+        @param dest the file that information about unrated audio files is to
+        be written out to
+        @arg defaultRating the rating value that is the rating that (only)
+        unrated tracks have
+        @arg outputFormatter the formatter to use to format this program's
+        output
+        """
+        assert dest is not None
+        assert defaultRating >= 0
+        assert outputFormatter is not None
+        self._dest = dest
+        self._defaultRating = defaultRating
+        self._outputFormatter = outputFormatter
+
+        self._albumsPathnamePrefix = ut. \
+            ut_removePathnamePrefix(_conf.flactrackAlbumsDir, _conf.baseDir)
+
+        self._currArtist = None
+        self._currArtistEndText = ""
+        self._currAlbum = None
+        self._currAlbumEndText = ""
+
+        self._areAlbumsIncluded = False
+        self._areTracksOutput = False
+
+    def setAreAlbumsIncluded(self, areIncluded):
+        """
+        Sets whether we're to include audio files that contain entire albums
+        in the ones that are potentially included in the output.
+        """
+        self._areAlbumsIncluded = areIncluded
+
+    def setAreTracksOutput(self, areOutput):
+        """
+        Sets whether we're to output the titles of the unrated tracks in
+        addition to artist and album information.
+        """
+        self._areTracksOutput = areOutput
+
+    def processLine(self, line):
+        """
+        Processes the line 'line' that is assumed to be the next line in the
+        ratings file we're processing.
+        """
+        assert line is not None
+        (rating, path) = musicfs.fs_parseRatingsFileLine(line)
+        if rating == self._defaultRating:  # then isn't a comment or invalid
+            self._processUnratedPath(path)
+
+    def finishProcessing(self):
+        """
+        Performs any final processing after all of the lines in the ratings
+        file have been processed by processLine().
+        """
+        # Write out the ends of the last album (if there is one) and then
+        # artist (if there is one).
+        self._write(self._currAlbumEndText)
+        self._currAlbumEndText = ""
+        self._write(self._currArtistEndText)
+        self._currArtistEndText = ""
+
+    def _processUnratedPath(self, path):
+        """
+        Processes the pathname 'path' that is from the next line in the
+        ratings file we're processing that represents an unrated file.
+        """
+        assert path is not None
+        parts = path.split(os.sep)
+        numParts = len(parts)
+        if self._isAlbumPathname(path):
+            if numParts < 2:
+                raise ProcessingException("the album file pathname '%s' in "
+                    "the ratings file doesn't contain an artist directory "
+                    "and/or album filename" % path)
+            doOutput = self._areAlbumsIncluded
+            doOutputTracks = False  # since there aren't any
+            track = None
+            album = parts[-1]
+            artist = parts[-2]
+        else:  # not an album file
+            if numParts < 3:
+                raise ProcessingException("the track file pathname '%s' in "
+                    "the ratings file doesn't contain an artist directory, "
+                    "album directory and/or track filename" % path)
+            doOutput = True
+            doOutputTracks = self._areTracksOutput
+            track = parts[-1]
+            album = parts[-2]
+            artist = parts[-3]
+        if doOutput:
+            if doOutputTracks:
+                self._outputWithTrack(artist, album, track)
+            else:
+                self._outputWithoutTrack(artist, album)
+
+    def _outputWithoutTrack(self, artist, album):
+        """
+        Outputs the information about an album with an unrated track without
+        including information about the unrated track itself.
+
+        See _outputWithTrack().
+        """
+        assert artist
+        assert album
+        fmtr = self._outputFormatter
+        if artist == self._currArtist:
+            if album == self._currAlbum:
+                # We've already output this track's album
+                pass
+            else:
+                # Write out the end of the previous album iff there is one,
+                # then write out this album.
+                self._write(self._currAlbumEndText)
+                self._write(fmtr.formatAlbum(artist, album))
+                self._currAlbumEndText = ""
+                    # there's nothing to write to finish this album
+                self._currAlbum = album
+        else:
+            # We've started a new artist (and therefore a new album too).
+            # First write out the end of the previous artist's last album,
+            # then the end of the previous artist itself.
+            self._write(self._currAlbumEndText)
+            self._write(self._currArtistEndText)
+
+            # Write out the start of the new artist and record what is to be
+            # output at the end of it.
+            self._write(fmtr.formatArtistStart(artist))
+            self._currArtistEndText = fmtr.formatArtistEnd(artist)
+            self._currArtist = artist
+
+            # Write out the first album for the new artist.
+            self._write(fmtr.formatAlbum(artist, album))
+            self._currAlbumEndText = ""
+                # there's nothing to write to finish this album
+            self._currAlbum = album
+
+    def _outputWithTrack(self, artist, album, track):
+        """
+        Outputs the information about an album with an unrated track
+        including information about the unrated track 'track' that it
+        contains.
+
+        See _outputWithoutTrack().
+        """
+        assert artist
+        assert album
+        assert track
+        fmtr = self._outputFormatter
+        if artist == self._currArtist:
+            if album == self._currAlbum:
+                # We've already output this track's album, so just output the
+                # track.
+                self._write(fmtr.formatAlbumTrack(artist, album, track))
+            else:
+                # Write out the end of the previous album iff there is one.
+                self._write(self._currAlbumEndText)
+
+                # Write out the start of this new album and record what is to
+                # be output at the end of it.
+                self._write(fmtr.formatAlbumStart(artist, album))
+                self._currAlbumEndText = fmtr.formatAlbumEnd(artist, album)
+                self._currAlbum = album
+
+                # Write out the new album's first unrated track.
+                self._write(fmtr.formatAlbumTrack(artist, album, track))
+        else:
+            # We've started a new artist (and therefore a new album too).
+            # First write out the end of the previous artist's last album,
+            # then the end of the previous artist itself.
+            self._write(self._currAlbumEndText)
+            self._write(self._currArtistEndText)
+
+            # Write out the start of the new artist and record what is to be
+            # output at the end of it.
+            self._write(fmtr.formatArtistStart(artist))
+            self._currArtistEndText = fmtr.formatArtistEnd(artist)
+            self._currArtist = artist
+
+            # Write out the first album for the new artist and record what is
+            # to be output at the end of it.
+            self._write(fmtr.formatAlbumStart(artist, album))
+            self._currAlbumEndText = fmtr.formatAlbumEnd(artist, album)
+            self._currAlbum = album
+
+            # Write out the new album's first unrated track.
+            self._write(fmtr.formatAlbumTrack(artist, album, track))
+
+    def _write(self, str):
+        """
+        Writes out the text 'str' to our output.
+        """
+        assert str is not None
+        self._dest.write(str)
+
+    def _isAlbumPathname(self, path):
+        """
+        Returns True iff 'path' is the pathname of a music file that contains
+        an entire album.
+        """
+        assert path is not None
+        return (ut.ut_removePathnamePrefix(path,
+                            self._albumsPathnamePrefix) is not None)
+
+
+class Program(ut.ut_AbstractProgram):
+    """
+    Represents a program that outputs information about all of the albums
+    that have one or more unrated tracks.
+    """
+
+    def _usageMessage(self, progName, shortHelpOpts, longHelpOpts,
+                      helpOptionsDesc):
+        result = """
+usage: %(progName)s %(shortHelpOpts)s %(longHelpOpts)s [-r base-ratings-filename] [-a] [-t] [-f fmt]
+
+which outputs to standard output a list of all of the albums
+that contain at least one unrated track: that is, at least one
+track whose rating is '%(defaultRating)s', the default rating. (The default
+rating is set using the 'defaultRating' property in the
+audiofs configuration files.)
+
+By default the ratings in the ratings file with basename
+'%(mainRatingsFile)s' are used. But if the optional '-r' option is
+specified then the ratings in the ratings file with basename
+'base-ratings-filename' will be used instead.
+
+If the optional '-a' option is specified then unrated album
+files - that is, individual files that each contain the entire
+contents of an album - will be included in the output. By
+default album files are not eligible to be included in the
+output.
+
+If the optional '-t' option is specified then the output will
+also contain information about the unrated tracks themselves.
+By default only artist and album information is included in
+the output.
+
+By default the output is lines of plain text indented to
+varying degrees. But if the optional '-f' option is specified
+then the output will be XML if 'fmt' is '%(xmlFmt)s', (X)HTML if 'fmt'
+is '%(htmlFmt)s', and the default plain text if 'fmt' is '%(textFmt)s'.
+%(helpOptionsDesc)s""" % {
+        "progName": progName, "shortHelpOpts": shortHelpOpts,
+        "longHelpOpts": longHelpOpts, "helpOptionsDesc": helpOptionsDesc,
+        "defaultRating": _conf.defaultRating,
+        "mainRatingsFile": _conf.mainRatingsBasename,
+        "xmlFmt": _xmlFormatName, "htmlFmt": _htmlFormatName,
+        "textFmt": _textFormatName }
+        assert result
+        return result
+
+    def _shortOptions(self):
+        result = "r:atf:"
+        assert result is not None
+        return result
+
+    def _buildInitialArgumentsMap(self):
+        result = {
+            "baseRatings": _conf.mainRatingsBasename,
+            "areAlbumsIncluded": False,
+            "areTracksOutput": False,
+            "outputFormatter": _outputFormatters[_defaultFormatName]
+        }
+        assert result is not None
+        return result
+
+    def _processOption(self, opt, val, argsMap):
+        assert opt
+        # 'val' may be None
+        assert argsMap is not None
+        result = True
+        if opt == "-a":
+            argsMap["areAlbumsIncluded"] = True
+        elif opt == "-t":
+            argsMap["areTracksOutput"] = True
+        elif opt == "-f":
+            if val in _outputFormatters:
+                argsMap["outputFormatter"] = _outputFormatters[val]
+            else:
+                result = False
+                self._fail("The format type '%s' specified with the '-f' "
+                           "option is an\ninvalid format type" % val)
+        elif opt == "-r":
+            if val:
+                argsMap["baseRatings"] = val
+            else:
+                result = False
+                self._fail("No ratings file basename was specified after "
+                           "the '-r' option")
+        else:
+            result = self._handleUnknownOption(opt)
+        return result
+
+    def _processNonOptionArguments(self, args, argsMap):
+        assert args is not None
+        assert argsMap is not None
+        result = True
+        if len(args):
+            self._fail("Too many arguments")
+            result = False
+        return result
+
+    def _execute(self, argsMap):
+        assert argsMap is not None
+        result = 0
+        ratingsPath = musicfs.fs_ratingsFilePathname(argsMap["baseRatings"])
+        #print "ratings file pathname = [%s]" % ratingsPath
+        f = None
+        try:
+            try:
+                f = file(ratingsPath)
+            except BaseException, ex:
+                result = 1
+                self._fail("Couldn't open the ratings file '%s' for "
+                           "reading: %s" % (ratingsPath, str(ex)))
+                assert f is None
+            if f is not None:
+                out = sys.stdout
+                formatter = argsMap["outputFormatter"]
+                out.write(formatter.formatStart())
+                p = RatingsFileProcessor(out, _conf.defaultRating, formatter)
+                p.setAreAlbumsIncluded(argsMap["areAlbumsIncluded"])
+                p.setAreTracksOutput(argsMap["areTracksOutput"])
+                while True:
+                    line = f.readline()
+                    if not line:
+                        break  # while
+                    try:
+                        p.processLine(line)
+                    except ProcessingException, ex:
+                        result = 1
+                        self._fail("Processing a line in the ratings file "
+                            "'%s' failed: %s" % (path, str(ex)))
+                p.finishProcessing()
+                out.write(formatter.formatEnd())
+        finally:
+            ut.ut_tryToCloseAll(f)
+        assert result >= 0
+        return result
+
+
+# Main program.
+
+Program().run()

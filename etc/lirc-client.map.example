@@ -1,0 +1,83 @@
+# Copyright (C) James MacKay 2010
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+
+# Go, Power
+#KEY_SELECT = _print()  # Go
+KEY_POWER = _exec("~/bin/music/mpd-select-server queued")
+
+# TV, Videos, Music, Pictures
+KEY_TV = _exec("~/bin/music/mpd-select-server albums")
+#KEY_VIDEO = _exec("~/bin/music/mpd-select-server comedy-radio") # Videos
+KEY_AUDIO = _exec("~/bin/music/mpd-select-server reviewing")    # Music
+KEY_MHP = _exec("~/bin/music/mpd-select-server better-radio")   # Pictures
+
+# Guide, Radio, Back/Exit, Menu
+#KEY_EPG = _print()                                          # Guide
+KEY_RADIO = _exec("~/bin/music/mpd-select-server radio")
+#KEY_EXIT = _print()                                         # Back/Exit
+#KEY_MENU = _print()
+
+# 4 arrow keys, OK
+#KEY_UP = _print()
+#KEY_LEFT = _print()
+#KEY_DOWN = _print()
+#KEY_RIGHT = _print()
+#KEY_ENTER = _print()    # OK
+
+# Vol up, Vol down, Mute
+KEY_VOLUMEUP = _exec("~/bin/music/mpd-selected-server-mpc volume +1")    # Vol up
+KEY_VOLUMEDOWN = _exec("~/bin/music/mpd-selected-server-mpc volume -1")  # Vol down
+KEY_MIN_INTERESTING = _exec("~/bin/music/mpd-selected-server-mpc pause") # Mute
+
+# Prev Ch, Ch up, Ch down
+#KEY_PREVIOUS = _print()                                                   # Prev Ch
+KEY_CHANNELUP = _exec("~/bin/music/mpd-selected-server-mpc volume 90")    # Ch up
+KEY_CHANNELDOWN = _exec("~/bin/music/mpd-selected-server-mpc volume 60")  # Ch down
+
+# record, rewind, replay, fast forward
+KEY_RECORD = _exec("~/bin/music/mpd-selected-server-mpc pause && ~/bin/music/mpd-selected-server-mpc seek 0 && ~/bin/music/mpd-select-server queued")
+KEY_STOP = _exec("~/bin/music/mpd-selected-server-mpc pause && ~/bin/music/mpd-selected-server-mpc seek 0")
+KEY_REWIND = _exec("~/bin/music/mpd-selected-server-mpc prev")
+KEY_FASTFORWARD = _exec("~/bin/music/mpd-selected-server-mpc next")
+
+# play, Replay, pause, Skip
+KEY_PLAY = _exec("~/bin/music/mpd-selected-server-mpc play")
+KEY_PREVIOUSSONG = _exec("~/bin/music/mpd-selected-server-mpc seek 0")  # Replay
+KEY_PAUSE = _exec("~/bin/music/mpd-selected-server-mpc pause")
+KEY_NEXTSONG = _exec("~/bin/music/mpd-selected-server-mpc seek 99")     # Skip
+
+# Number keys: 0-9
+KEY_0 = _exec("click; ~/bin/music/mpd-set-rating -a 10")
+KEY_1 = _exec("click; ~/bin/music/mpd-set-rating -a 1")
+KEY_2 = _exec("click; ~/bin/music/mpd-set-rating -a 2")
+KEY_3 = _exec("click; ~/bin/music/mpd-set-rating -a 3")
+KEY_4 = _exec("click; ~/bin/music/mpd-set-rating -a 4")
+KEY_5 = _exec("click; ~/bin/music/mpd-set-rating -a 5")
+KEY_6 = _exec("click; ~/bin/music/mpd-set-rating -a 6")
+KEY_7 = _exec("click; ~/bin/music/mpd-set-rating -a 7")
+KEY_8 = _exec("click; ~/bin/music/mpd-set-rating -a 8")
+KEY_9 = _exec("click; ~/bin/music/mpd-set-rating -a 9")
+
+# Text (*), Sub/CC (#)
+KEY_TEXT = _exec('click; ~/bin/music/mpd-speak-current-track-info "%(elapsedTime)s"')
+KEY_SUBTITLE = _exec('click; ~/bin/music/mpd-speak-current-track-info "%(totalTime)s"')
+
+# Colour keys: red, green, yellow, blue
+KEY_RED = _exec('click; ~/bin/music/mpd-speak-current-track-info "%(title)s"')
+KEY_GREEN = _exec('click; ~/bin/music/mpd-speak-current-track-info "%(artist)s"')
+KEY_YELLOW = _exec('click; ~/bin/music/mpd-speak-current-track-info "%(album)s"')
+KEY_BLUE = _exec('click; ~/bin/music/mpd-speak-current-track-info "%(rating)s"')

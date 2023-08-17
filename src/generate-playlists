@@ -1,0 +1,112 @@
+#!/usr/bin/env python
+#
+# Copyright (C) James MacKay 2008
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+from audiofs import config, musicfs
+import audiofs.utilities as ut
+
+
+# Constants
+
+_conf = config.obtain()
+
+defaultSubdir = _conf.baseSubdir
+defaultPlaylistDir = _conf.generatedPlaylistsDir
+
+
+# Classes.
+
+class Program(ut.ut_AbstractProgram):
+    """
+    Represents programs that automatically generate playlists.
+    """
+
+    def _usageMessage(self, progName, shortHelpOpts, longHelpOpts,
+                      helpOptionsDesc):
+
+        result = """
+usage: %(progName)s %(shortHelpOpts)s %(longHelpOpts)s [-s subdir] [dir]
+
+which causes all of the playlist files that can be automatically
+generated to be generated under the directory with pathname
+'dir', or under the default directory
+
+    %(defaultPlaylistDir)s
+
+if 'dir' isn't specified.
+%(helpOptionsDesc)s
+If the optional '-s' option is specified then playlists will only
+be generated for files and directories under the subdirectory
+'subdir' of the root music directory ('%(rootDir)s').
+
+If the '-s' option isn't specified then 'subdir' will default to
+the base music directory ('%(defaultSubdir)s').
+""" % { "progName": progName, "shortHelpOpts": shortHelpOpts,
+        "longHelpOpts": longHelpOpts, "helpOptionsDesc": helpOptionsDesc,
+        "rootDir": _conf.rootDir, "defaultSubdir": defaultSubdir,
+        "defaultPlaylistDir": defaultPlaylistDir }
+        assert result
+        return result
+
+    def _shortOptions(self):
+        result = "s:"
+        assert result is not None
+        return result
+
+    def _buildInitialArgumentsMap(self):
+        result = { "subdir": defaultSubdir,
+                   "playlistDir": defaultPlaylistDir }
+        assert result is not None
+        return result
+
+    def _processOption(self, opt, val, argsMap):
+        assert opt
+        # 'val' may be None
+        assert argsMap is not None
+        result = True
+        if opt == "-s":
+            argsMap["subdir"] = val
+        else:
+            result = self._handleUnknownOption(opt)
+        return result
+
+    def _processNonOptionArguments(self, args, argsMap):
+        assert args is not None
+        assert argsMap is not None
+        result = True
+        numArgs = len(args)
+        if numArgs > 1:
+            result = False
+            self._fail("Too many arguments")
+        elif numArgs == 1:
+            argsMap["playlistDir"] = args[0]
+        return result
+
+    def _execute(self, argsMap):
+        assert argsMap is not None
+        result = 0
+        subdir = argsMap["subdir"]
+        playlistDir = argsMap["playlistDir"]
+        mm = musicfs.fs_MusicMetadataManager()
+        mm.fs_generatePlaylists(playlistDir, subdir)
+        assert result >= 0
+        return result
+
+
+# Main program.
+
+Program().run()

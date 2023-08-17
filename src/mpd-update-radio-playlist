@@ -1,0 +1,192 @@
+#!/usr/bin/env python
+#
+# Copyright (C) James MacKay 2009
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+from audiofs import mpd, musicfs, config
+
+import audiofs.utilities as ut
+
+from StringIO import StringIO
+
+
+# Constants.
+
+_conf = config.obtain()
+
+
+# Classes.
+
+class Program(ut.ut_AbstractProgram):
+    """
+    Represents programs that update all of the radio MPD servers' playlists,
+    iff there are any such servers.
+    """
+
+    def _usageMessage(self, progName, shortHelpOpts, longHelpOpts,
+                      helpOptionsDesc):
+        result = """
+usage: %s %s %s
+
+which updates the radio MPD servers' playlists so that there
+aren't too many tracks before the current track, and there
+aren't too few tracks after the current track.
+%s""" % (progName, shortHelpOpts, longHelpOpts, helpOptionsDesc)
+        assert result
+        return result
+
+    def _buildInitialArgumentsMap(self):
+        result = {}
+        assert result is not None
+        return result
+
+    def _processOption(self, opt, val, argsMap):
+        assert opt
+        # 'val' may be None
+        assert argsMap is not None
+        return self._handleUnknownOption(opt)  # we don't take any options
+
+    def _processNonOptionArguments(self, args, argsMap):
+        assert args is not None
+        assert argsMap is not None
+        result = True
+        if len(args) > 0:
+            self._fail("Too many arguments")
+            result = False
+        return result
+
+    def _execute(self, argsMap):
+        assert argsMap is not None
+        result = 0
+        for desc in _conf.allMpdServerDescriptions():
+            if _conf.isRadioMpdServer(desc):
+                result = max(result, self._updateOneServer(desc))
+
+    def _updateOneServer(self, desc):
+        """
+        Updates the playlist of the radio server described by 'desc'.
+
+        See config.conf_Configuration.mpdServerDescription().
+        """
+        #self._debug("---> _updateOneServer(%s)" % str(desc))
+        assert desc is not None
+        assert _conf.isRadioMpdServer(desc)
+        result = 0
+        server = mpd.mp_createMpdServerFromDescription(desc)
+        #self._debug("    server = %s" % str(server))
+        numTracks = server.trackCount()
+        #self._debug("    # tracks = %i" % numTracks)
+        currPos = server.currentTrackPosition()
+        if currPos is None:  # there's no current track
+            currPos = 0
+        #self._debug("    curr. track pos = %i" % currPos)
+
+        # Delete any excess tracks from before the current one.
+        numToRemove = currPos - _conf.radioMinimumTracksBehind(desc)
+        #self._debug("    num tracks to remove = %i" % numToRemove)
+        if numToRemove > 0:
+            server.removeFirstTracks(numToRemove)
+
+        # Append any additional (randomly-selected) tracks to the current
+        # playlist.
+        numAfter = numTracks - currPos
+            # which properly counts all tracks even if there's no curr one
+        if numAfter < _conf.radioMinimumTracksAhead(desc):
+            numToAdd = _conf.radioMaximumTracksAhead(desc) - numAfter
+            assert numToAdd > 0
+            if not self._appendTracksToPlaylist(desc, server, numToAdd):
+                result = 2  # failure was already reported
+
+        assert result >= 0
+        return result
+
+    def _appendTracksToPlaylist(self, desc, server, n):
+        """
+        Adds 'n' tracks to the end of the playlist of the MPD server 'server'
+        that is described by 'desc', returning True if they're all
+        successfully added, and reporting failure and returning False
+        otherwise.
+        """
+        assert desc is not None
+        assert _conf.isRadioMpdServer(desc)
+        assert server is not None
+        assert n > 0
+        result = True
+        r2c = self._buildRatingToChancesConverter(desc)
+        if r2c is None:
+            result = False
+        else:
+            mm = musicfs.fs_MusicMetadataManager()
+            try:
+                out = StringIO()
+                crit = self._buildPlaylistSelectionCriteria(desc)
+                mm.fs_createRandomPlaylist(out, crit, n,
+                    _conf.radioRatingsBasename(desc), r2c)
+                lines = out.getvalue()
+                paths = lines.splitlines()
+            finally:
+                out.close()
+            #print "paths = [%s]" % repr(paths)
+            server.add(paths)
+            ut.ut_preloadFilesInBackground(paths)
+
+    def _buildPlaylistSelectionCriteria(self, desc):
+        """
+        Builds and returns the selection criteria to use to determine which
+        tracks to consider for being added to the playlist of the radio MPD
+        server described by 'desc'.
+        """
+        assert desc is not None
+        assert _conf.isRadioMpdServer(desc)
+        result = musicfs.fs_PlaylistSelectionCriteria()
+        result.fs_includeKind(_conf.trackKind)
+        gl = _conf.radioIncludedGenres(desc)
+        if gl:
+            for g in gl:
+                result.fs_includeGenre(g)
+        gl = _conf.radioExcludedGenres(desc)
+        if gl:
+            for g in gl:
+                result.fs_excludeGenre(g)
+        assert result is not None
+        return result
+
+    def _buildRatingToChancesConverter(self, desc):
+        """
+        Builds and returns the one-argument function that we are to use to
+        convert each file's rating to its chances for appearing in the
+        playlist of the radio MPD server described by 'desc', or reports
+        failure and returns None if the converter can't be built.
+        """
+        assert desc is not None
+        assert _conf.isRadioMpdServer(desc)
+        name = _conf.radioRatingToChancesConverter(desc)
+        result = musicfs.fs_ratingToChancesConverter(name)
+        if result is None:
+            # Note: we check this here since (at least currently) it can't be
+            # checked in the 'config' module.
+            (host, port) = _conf.mpdServer(desc)
+            self._fail("the ratings-to-chances converter '%s' specified in "
+                "the configuration files for the MPD server with hostname "
+                "'%s' and port number '%i' is not the name of a valid "
+                "rating-to-chances converter" % (name, host, port))
+        # 'result' may be None
+        return result
+
+
+# Main program.
+
+Program().run()

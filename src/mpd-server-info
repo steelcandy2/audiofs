@@ -1,0 +1,168 @@
+#!/usr/bin/env python
+#
+# Copyright (C) James MacKay 2010
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+from audiofs import config, mpd, musicfs
+import audiofs.utilities as ut
+
+import os.path
+import sys
+
+# Constants
+
+_conf = config.obtain()
+
+# The names of environment variables used by the 'mpd' program.
+_hostEnvVarName = "MPD_HOST"
+_portEnvVarName = "MPD_PORT"
+
+# The formats in which we output server information.
+_defaultFmt = "%s:%i"
+_envFmt = _hostEnvVarName + "=%s " + _portEnvVarName + "=%i"
+_cmdFmt = _envFmt + " %s"
+
+
+# Classes.
+
+class Program(mpd.mp_AbstractMpdProgram):
+    """
+    Represents a program that outputs information about a given MPD server,
+    or executes a shell command using that information.
+    """
+
+    def _usageMessage(self, progName, shortHelpOpts, longHelpOpts,
+                      helpOptionsDesc):
+        result = """
+usage: %(progName)s %(shortHelpOpts)s %(longHelpOpts)s [ -e | -c cmd ] [server-id]
+
+which outputs the hostname and port of the MPD server whose
+server ID best matches 'server-id' if there is such a server:
+otherwise an error is reported and the command fails. If
+'server-id' is omitted then information about the selected
+server is output, or the default server if no server is
+currently selected.
+
+By default the information is output as a single line of the
+form
+
+    host:port
+
+But if the optional '-e' option is specified then the
+information is instead output as
+
+    %(hostEnvVar)s=host %(portEnvVar)s=port
+
+that is, as (Bourne shell) assignments to MPD environment
+variables.
+
+If the optional '-c' option is specified then nothing is
+output - at least not directly by this command. Instead the
+shell command 'cmd' is executed as though it was executed as
+
+    %(hostEnvVar)s=host %(portEnvVar)s=port $cmd
+%(helpOptionsDesc)s""" % {
+        "progName": progName, "shortHelpOpts": shortHelpOpts,
+        "longHelpOpts": longHelpOpts, "helpOptionsDesc": helpOptionsDesc,
+        "hostEnvVar": _hostEnvVarName, "portEnvVar": _portEnvVarName }
+        assert result
+        return result
+
+    def _shortOptions(self):
+        result = "ec:"
+        assert result is not None
+        return result
+
+    def _buildInitialArgumentsMap(self):
+        result = {
+            "serverDesc": None,
+            "cmd": None,
+            "asEnv": False
+        }
+        assert result is not None
+        return result
+
+    def _processOption(self, opt, val, argsMap):
+        assert opt
+        # 'val' may be None
+        assert argsMap is not None
+        result = True
+        if opt == "-e":
+            argsMap["asEnv"] = True
+        elif opt == "-c":
+            argsMap["cmd"] = val
+        else:
+            result = self._handleUnknownOption(opt)
+        return result
+
+    def _processNonOptionArguments(self, args, argsMap):
+        assert args is not None
+        assert argsMap is not None
+        result = True
+        numArgs = len(args)
+        if numArgs == 1:
+            (id, desc) = self._smartMatchMpdServerIds(args[0])
+            if id is not None:
+                argsMap["serverDesc"] = desc
+            else:
+                result = False
+                self._fail(desc)
+        elif numArgs > 1:
+            result = False
+            self._fail("Too many arguments")
+        # Otherwise no server ID was specified, which is OK: _execute()
+        # properly handles the 'serverDesc' argsMap entry being None.
+        return result
+
+    def _checkArgumentCombinations(self, argsMap):
+        assert argsMap is not None
+        result = True
+        if argsMap["asEnv"] and (argsMap["cmd"] is not None):
+            result = False
+            self._fail("The -e and -c options cannot be used together")
+        return result
+
+    def _execute(self, argsMap):
+        assert argsMap is not None
+        result = 0
+        desc = argsMap["serverDesc"]
+        if desc is not None:
+            (host, port) = _conf.mpdServer(desc)
+        else:
+            (host, port) = _conf.selectedMpdServer()
+                # which uses the default server if one isn't selected
+        if argsMap["asEnv"]:
+            print _envFmt % (host, port)
+        else:
+            cmd = argsMap["cmd"]
+            if cmd is None:
+                print _defaultFmt % (host, port)
+            else:  # 'cmd' is not None
+                cmd = _cmdFmt % (host, port, cmd)
+                output = ut.ut_executeShellCommand(cmd)
+                if output is None:
+                    result = 1
+                    self._fail("Executing the shell command '%s' failed" %
+                               cmd)
+                elif output:
+                    sys.stdout.write(output)
+        assert result >= 0
+        return result
+
+
+# Main program.
+
+Program().run()

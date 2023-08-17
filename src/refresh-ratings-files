@@ -1,0 +1,102 @@
+#!/usr/bin/env python
+#
+# Copyright (C) James MacKay 2008
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+from audiofs import musicfs, config
+import audiofs.utilities as ut
+
+
+# Constants.
+
+_conf = config.obtain()
+
+
+# Classes.
+
+class Program(ut.ut_AbstractProgram):
+    """
+    Represents programs that preload audio files into music filesystems'
+    caches.
+    """
+
+    def _usageMessage(self, progName, shortHelpOpts, longHelpOpts,
+                      helpOptionsDesc):
+        result = """
+usage: %s %s %s [base-ratings-filename ...]
+
+where each 'base-ratings-filename' is the basename of a ratings
+file - without the '%s' extension - that is to be refreshed.
+If no 'base-ratings-filename' arguments are present then all
+ratings files in the ratings file directory
+
+    %s
+
+are refreshed.
+%s
+A ratings file is refreshed by creating it if it doesn't exist,
+or if it does exist by making sure that it contains a rating for
+every music file in the main music directory catalogue. (A new
+music file is given an initial rating of %i.)
+""" % (progName, shortHelpOpts, longHelpOpts,
+       config.fullRatingsFileExtension, _conf.ratingsDir,
+       helpOptionsDesc, _conf.defaultRating)
+        assert result
+        return result
+
+    def _buildInitialArgumentsMap(self):
+        result = { "args": None }
+        assert result is not None
+        return result
+
+    def _processOption(self, opt, val, argsMap):
+        assert opt
+        # 'val' may be None
+        assert argsMap is not None
+        return self._handleUnknownOption(opt)  # we don't take any options
+
+    def _processNonOptionArguments(self, args, argsMap):
+        assert args is not None
+        assert argsMap is not None
+        result = True
+        argsMap["args"] = args
+        return result
+
+    def _execute(self, argsMap):
+        assert argsMap is not None
+        result = 0
+        args = argsMap["args"]
+        numArgs = len(args)
+        mm = musicfs.fs_MusicMetadataManager()
+        mm.fs_refreshAllGeneralMetadataFiles()
+        if numArgs == 0:
+            mm.fs_refreshAllRatingsInformation()
+        else:
+            for base in args:
+                if base in _conf.allRatingsBasenames:
+                    mm.fs_refreshRatingsInformation(base)
+                else:
+                    self._fail("The ratings file with basename '%s' "
+                        "isn't specified as a\nratings file in the "
+                        "configuration file" % base)
+                    result = 2
+        assert result >= 0
+        return result
+
+
+# Main program.
+
+Program().run()

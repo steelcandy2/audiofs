@@ -1,0 +1,99 @@
+#!/usr/bin/env python
+#
+# Copyright (C) James MacKay 2008
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+from audiofs import mpd
+import audiofs.utilities as ut
+
+
+# Classes.
+
+class Program(ut.ut_AbstractProgram):
+    """
+    Represents programs that create a database file for an MPD server.
+    """
+
+    def _usageMessage(self, progName, shortHelpOpts, longHelpOpts,
+                      helpOptionsDesc):
+
+        result = """
+usage: %s %s %s [-c catalogue] database
+
+where 'database' is the pathname of the MPD database file
+to create.
+%s
+If the optional '-c' option is specified then the music
+directory catalogue with pathname 'catalogue' is used in
+building the MPD database. Otherwise the default music
+directory catalogue is used.
+
+If 'database' already exists then it will be overwritten.
+""" % (progName, shortHelpOpts, longHelpOpts, helpOptionsDesc)
+        assert result
+        return result
+
+    def _shortOptions(self):
+        result = "c:"
+        assert result is not None
+        return result
+
+    def _buildInitialArgumentsMap(self):
+        result = { "catPath": None,
+                   "dbPath": None }
+        assert result is not None
+        return result
+
+    def _processOption(self, opt, val, argsMap):
+        assert opt
+        # 'val' may be None
+        assert argsMap is not None
+        result = True
+        if opt == "-c":
+            argsMap["catPath"] = val
+        else:
+            result = self._handleUnknownOption(opt)
+        return result
+
+    def _processNonOptionArguments(self, args, argsMap):
+        assert args is not None
+        assert argsMap is not None
+        result = True
+        numArgs = len(args)
+        if numArgs == 1:
+            argsMap["dbPath"] = args[0]
+        elif numArgs > 1:
+            self._fail("Too many arguments")
+            result = False
+        else:
+            self._fail("Too few arguments")
+            result = False
+        return result
+
+    def _execute(self, argsMap):
+        assert argsMap is not None
+        result = 0
+        catPath = argsMap["catPath"]  # may be None
+        dbPath = argsMap["dbPath"]
+        assert dbPath is not None
+        mpd.mp_Mpd().createDatabaseFile(dbPath, catPath)
+        assert result >= 0
+        return result
+
+
+# Main program.
+
+Program().run()

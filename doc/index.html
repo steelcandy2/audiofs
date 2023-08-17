@@ -1,0 +1,921 @@
+<!--
+# Copyright (C) James MacKay 2008-2011
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+-->
+<html>
+<head>
+    <title>AudioFS</title>
+    <style media="all" type="text/css">
+    #toc-list a { text-decoration: none; }
+    #toc-list a:hover { text-decoration: underline; }
+    .def { font-weight: bold; }
+    .note { font-style: italic; border: 1px solid; padding: 0.25em; }
+    .heading { font-weight: bold; }
+    .note .heading { font-style: normal; }
+    .config-var { font-weight: bold; font-style: italic; }
+    .mount-opt { font-weight: bold; }
+    .path { font-family: monospace; }
+    .program { font-family: monospace; font-weight: bold; }
+    .section-menu, .subsection-menu { text-align: right; font-size: 0.8em; }
+    .section-menu a, .subsection-menu a { text-decoration: none; }
+    .section-menu a:hover, .subsection-menu a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+
+<div align="center" id="Top">
+<h1>AudioFS</h1>
+James MacKay
+<p>
+$Id: index.html,v 1.17 2011/11/24 16:09:47 jgm Exp $
+</div>
+
+
+<hr/>
+<h2 id="toc">Table of Contents</h2>
+<ul id="toc-list">
+    <li><a href="#Introduction">Introduction</a></li>
+    <li><a href="#Installation">Installation</a>
+    <li><a href="#Configuration">Configuration</a>
+    <ul>
+        <li><a href="#ConfigurationFiles">Files</a></li>
+        <li><a href="#ConfigurationProperties">Properties</li>
+        <li><a href="#ExternalPrograms">External Programs</li>
+    </ul></li>
+    <li><a href="#Filesystems">Filesystems</a>
+    <ul>
+        <li><a href="#FlactrackFilesystem">flactrack Filesystem</a></li>
+        <li><a href="#Flac2mp3Filesystem">flac2mp3 Filesystem</a></li>
+        <li><a href="#Flac2oggFilesystem">flac2ogg Filesystem</a></li>
+        <li><a href="#MusicsearchFilesystem">musicsearch Filesystem</a></li>
+    </ul></li>
+    <li><a href="#MusicDirectory">Music Directory</a>
+    <ul>
+        <li><a href="#MusicDirectoryStructure">Structure</a></li>
+        <li><a href="#MusicDirectoryMaintenance">Building and Maintenance</e></li>
+    </ul></li>
+    <li><a href="#Mpd">Music Player Daemon (MPD) Integration</a></li>
+</ul>
+
+
+<div class="section-menu"><a href="#Top">top</a></div>
+<hr/>
+<h2><a id="Introduction">Introduction</a></h2>
+
+<p>This document describes the AudioFS software package, which provides the
+following:</p>
+<ul>
+    <li><a href="http://fuse.sourceforge.net">FUSE</a> filesystems that
+        convert one type of audio file to another - currently album FLAC + CUE
+        files to per-track FLAC files, and FLAC files to MP3 or Ogg Vorbis
+        files - as well as a filesystem that allows you to seach a music
+        directory's contents</li>
+    <li>the ability to build and maintain a directory - referred to as a
+        <a href="#music-directory-def">music directory</a> in this document -
+        that contains an entire music collection (in various formats), as well
+        as associated information like playlists and ratings</li>
+    <li>integration between the information in a music directory and the
+        <a href="http://www.musicpd.org">MPD</a> music server program</li>
+</ul>
+
+<p><span class="heading">Note</span>: regardless of how much or how little of
+this package's functionality you are going to use (even if it's just the audio
+filesystems) you must provide a complete and correct <a
+href="#Configuration">configuration file</a>.</p>
+
+<p>If you just want to use the audio filesystems by themselves then the <a
+href="#Filesystems">Filesystems</a> section explains how to do that, though
+it's also a good idea to at least skim that section if you're going to use
+this package to build and maintain a music directory. The <a
+href="#MusicDirectory">Music Directory</a> section can be used to determine
+whether such a music directory suits your needs: it describes what such a
+directory will look like, as well as how to go about configuring and
+maintaining one. And the <a href="#Mpd">Music Player Daemon (MPD)
+Integration</a> section gives an overview of how this package can integrate a
+music directory with the MPD music server.</p>
+
+
+<div class="section-menu"><a href="#Top">top</a></div>
+<hr/>
+<h2><a id="Installation">Installation</a></h2>
+<p>
+To install AudioFS from the AudioFS-*.tar.gz file, first copy it to a
+temporary directory. Then unpack the file using a command like
+<pre>
+    tar zxvf AudioFS-*.tar.gz
+</pre>
+and change into the newly-created directory using a command like
+<pre>
+    cd AudioFS-*
+</pre>
+Executing the command
+<pre>
+    python setup.py install
+</pre>
+from there will install AudioFS.</p>
+
+
+<div class="section-menu"><a href="#Top">top</a></div>
+<hr/>
+<h2><a id="Configuration">Configuration</a></h2>
+
+<h3 id="ConfigurationFiles">Files</h3>
+
+<p>There are two configuration files that apply to a given user's use of this
+package:</p>
+<ul>
+    <li>a <span class="def">site configuration file</span> that applies
+        to every user on the computer: its pathname is usually <span
+        class="path">/etc/audiofs/configuration.py</span>, though it may be
+        different on different platforms; and</li>
+    <li>a <span class="def">user configuration file</span> that applies
+        only to an individual user: its pathname - relative to the user's
+        home directory - is <span
+        class="path">.audiofs/configuration.py</span>.</li>
+</ul>
+<p>Any configuration property can be specified in either of the configuration
+files, and if a property appears in both then the one in the user
+configuration is the one that is used.</p>
+
+<p>These configuration files are Python source code files. A configuration
+property's value is set by assigning to a global variable with the property's
+name, but arbitrary Python code can be used to build a property's value.</p>
+
+<div class="subsection-menu"><a href="#Top">top</a></div>
+
+
+<h3 id="ConfigurationProperties">Properties</h3>
+
+<p>The majority of the configuration properties can be left unchanged from the
+values they're assigned in the version of the configuration file that ships
+with this package. In addition, all of the properties - including the ones
+that don't need to be changed - are fully described in that configuration
+file. So we only document here those configuration properties that have to be
+changed or set.</p>
+
+<p><span class="heading">Note</span>: the values of the configuration properties
+that need to be set - that is, that have no default values - appear inside
+double angle brackets in the configuration file that ships with this package.
+So a line like
+<pre>
+    tempDir = &lt;&lt;"/tmp"&gt;&gt;</pre>
+indicates that the <span class="config-var">tempDir</span> configuration
+variable's value needs to be set (and that <code>/tmp</code> may be a
+suitable value for it, depending on your platform, or at least that
+something like it might be a suitable value).</p>
+
+<p>The <span class="config-var">tempDir</span> property specifies the pathname
+of the directory under which temporary files will be created. Depending on the
+size of your audio file collection several hundred megabytes or more of disk
+space may be required under this directory at any given time (though only
+temporarily).</p>
+
+<p>The <span class="config-var">rootDir</span> property specifies the absolute
+pathname of the music directory. This is required to be an existing but empty
+directory (though it won't be empty anymore once the music directory has been
+<a href="#MusicDirectoryMaintenance">built</a>). Everything under this
+directory will be deleted whenever the music directory is <a
+href="#MusicDirectoryMaintenance">dismantled</a>, so you should <em>never</em>
+create your own files under this directory.</p>
+
+<p>The <span class="config-var">dataDirs</span> property specifies a list of
+the absolute pathnames of the <span id="data-directories-def">data
+directories</a>: the directories under which are to be found all of the audio
+files that are to appear under the music directory. None of the data
+directories can be under the directory specified by the <span
+class="config-var">rootDir</span> property. In addition, the default
+configuration assumes that the two levels of directories immediately under
+each directory in <span class="config-var">dataDirs</span> are of the form
+<pre>
+    [format]/[kind]</pre>
+where</p>
+<ul>
+    <li>'[format]' identifies the format of all of the audio files under it,
+        and should be the value of one of the audio file format configuration
+        properties: currently either <span class="config-var">flacFormat</span>
+        (whose value defaults to 'flac') or <span
+        class="config-var">mp3Format</span> (whose value defaults to 'mp3');
+        and</li>
+    <li>'[kind]' indicates what each of the audio files under it represents
+        (such as individual songs or tracks, or whole albums), and should be
+        the value of one of the audio file kind configuration properties:
+        currently either <span class="config-var">albumKind</span> (whose
+        value defaults to 'albums') or <span class="config-var">trackKind</span>
+        (whose value defaults to 'tracks').</li>
+</ul>
+<p>The pathnames of the audio files relative to the <code>[format]/[kind]</code>
+directories should also have a consistent format - at least across those files
+with the same kind - but this is not strictly required. For example, all album
+audio files could have relative pathnames of the form
+<pre>
+    [format]/[kind]/[artist]/[album]_[artist].[ext]</pre>
+(where '[ext]' is a file extension that usually indicates the audio file's
+format), and all track audio files could have relative pathnames of the form
+<pre>
+    [format]/[kind]/[artist]/[album]_[artist]/[title]_[artist].[ext]</pre>
+(where '[title]' is the title of the track/song that the audio file
+represents).</p>
+
+<p>The <span class="config-var">sourceMetadataDir</span>, <span
+class="config-var">sourcePlaylistsDir</span> and <span
+class="config-var">sourceRatingsDir</span> properties specify the absolute
+pathnames of the directories under which to store permanent metadata, playlist
+and rating information, respectively. Since the information is permanent it
+mustn't get deleted every time the music directory is <a
+href="#MusicDirectoryMaintenance">dismantled</a>, and so none of
+the directories can be under the directory specified by the <span
+class="config-var">rootDir</span> property. While these are three separate
+properties, it is common for them to be subdirectories of the same parent
+directory, and so in the default version of the configuration file only one
+variable named <span class="config-var">_sourceBaseDir</span> has to have its
+value set, and then the values for <span
+class="config-var">sourceMetadataDir</span>, <span
+class="config-var">sourcePlaylistsDir</span> and <span
+class="config-var">sourceRatingsDir</span> are built from it.</p>
+
+<p>the <span class="config-var">flactrackCacheDir</span>, <span
+class="config-var">flac2oggCacheDir</span> and <span
+class="config-var">flac2mp3CacheDir</span> properties specify the absolute
+pathnames of the directories under which the audio filesystems cache the audio
+files that they generate. By default the filesystems share a cache directory
+and so only the value of <span class="config-var">flactrackCacheDir</span>
+needs to be set, but they can also be set to use separate directories. These
+cache directories must not be subdirectories of the directory specified by the
+<span class="config-var">rootDir</span> property.</p>
+
+<div class="subsection-menu"><a href="#Top">top</a></div>
+
+
+<h3 id="ExternalPrograms">External Programs</h3>
+
+Several external programs are used by this package: their pathnames (or just
+filenames when they're in your PATH) are specified by the various <span
+class="config-var">xxxProgram</span> configuration properties. The following
+external programs, or drop-in replacements for them (that is, programs that
+take the same arguments and options) are at least potentially used by one or
+more parts of this package:
+
+<ul>
+    <li><span class="program">echo</span>: the standard *NIX command</li>
+    <li><span class="program">sort</span>: the standard *NIX command</li>
+    <li><span class="program">cueprint</span>: used by the flactrack filesystem
+        to extract information from the CUE files associated with FLAC album
+        files</li>
+    <li><span class="program">flac</span>: used by the flactrack and flac2mp3
+        filesystems to encode and decode FLAC audio files</li>
+    <li><span class="program">metaflac</span>: used to extract information
+        from FLAC audio files</li>
+    <li><span class="program">lame</span>: used by the flac2mp3 filesystem in
+        converting FLAC audio files to MP3 audio files</li>
+    <li><span class="program">mid3v2</span>: used to extract information from
+        MP3 audio files</li>
+    <li><span class="program">oggenc</span>: used by the flac2ogg filesystem
+        in converting FLAC audio files to OGG audio files</li>
+    <li><span class="program">vorbiscomment</span>: used to extract
+        information from OGG audio files</li>
+    <li><span class="program">fusermount</span>: used by the music directory
+        scripts to mount and unmount audio filesystems</li>
+    <li><span class="program">mpd</span>: used by the MPD music server
+        integration code to communicate with MPD servers</li>
+    <li><span class="program">mpc</span>: used by the MPD music server
+        integration code to communicate with MPD servers</li>
+    <li><span class="program">festival</span>: used to speak information about
+        audio files (such as an MPD server's current track)</li>
+</ul>
+
+Depending on what parts of this package you actually use you may not need to have
+some of these programs installed. Which programs are used by what parts of this
+package is not specified here, though, and in any case is subject to change in
+future versions.
+
+
+<div class="section-menu"><a href="#Top">top</a></div>
+<hr/>
+<h2><a id="Filesystems">Filesystems</a></h2>
+
+<p>There are currently three audio filesystems:
+<ul>
+    <li><span class="def">flactrack</span>, which contains a directory of
+        per-track FLAC audio files for each per-album FLAC audio file (with
+        a corresponding CUE file) under a specified directory, where each
+        per-track FLAC audio file contains a track from the corresponding
+        album</li>
+    <li><span class="def">flac2mp3</span>, which contains an MP3 audio file
+        for each FLAC audio file under a specified FLAC directory, where the
+        MP3 file is just a re-encoding of the corresponding FLAC file</li>
+    <li><span class="def">flac2ogg</span>, which contains an OGG audio file
+        for each FLAC audio file under a specified FLAC directory, where the
+        OGG file is just a re-encoding of the corresponding FLAC file</li>
+</ul>
+as well as an associated <span class="def">musicsearch</span> filesystem
+that allows a music directory to be searched based on a number of
+criteria. The following subsections describe each of these filesystems in
+more detail.</p>
+
+<p><span class="heading">Note</span>: files aren't automatically removed from
+the cache directories used by the audio filesystems, and so the total size of
+their contents can grow without bound. In order to prevent this you can use
+the <span class="program">maintain-cache-directory</span> program that is
+included in this package: see the <a href="#MusicDirectoryMaintenance">Building
+and Maintenance</a> subsection of the <a href="#MusicDirectory">Music
+Directory</a> section of this document for the details about how to use the
+program.</p>
+
+
+<h3 id="FlactrackFilesystem">flactrack Filesystem</h3>
+
+This filesystem takes the following options when it is mounted:
+<ul>
+    <li><span class="mount-opt">albums=ALBUMS_PATH</span>, which specifies that
+        it is to contain per-track FLAC files for all of the tracks on all of
+        the per-album FLAC audio files under the directory with pathname
+        ALBUMS_PATH</li>
+    <li><span class="mount-opt">cache=CACHE_PATH</span>, which specifies that
+        any and all audio files that are automatically generated by the
+        filesystem are to be cached under the directory with pathname
+        CACHE_PATH</li>
+    <li><span class="mount-opt">real=REAL_PATH</span>, which, if present,
+        specifies that &quot;real&quot; (presumably per-track) FLAC audio
+        files under the directory with pathname REAL_PATH are to be present in
+        the filesystem, appearing in place of any per-track FLAC audio file
+        with the same pathname that might have otherwise been automatically
+        generated. (Each &quot;real&quot; per-track FLAC audio file will
+        have the same pathname relative to the filesystem's mount point that
+        it has relative to REAL_PATH)</li>
+    <li><span class="mount-opt">nometadata</span>, which specifies that
+        no <span class="path">.metadata</span> subdirectory is to be created
+        directly under the mount point: it would have contained
+        subdirectories of files containing metadata describing the audio
+        files in the filesystem</li>
+</ul>
+<p>The <span class="mount-opt">nometadata</span> and <span
+class="mount-opt">real</span> options are optional: the others are required.
+So to mount a flactrack filesystem you might execute a command that looks
+something like this (assuming that the <span class="program">flactrack</span>
+script from this package is in your path):</p>
+<pre>
+    flactrack -o kernel_cache,intr,albums=/audio/flac/albums,cache=/var/cache/audiofs /audio/flac/tracks
+</pre>
+<p>Let 'mp' be the pathname of the directory that is the mount point for a
+flactrack filesystem. Then the contents of 'mp' will be such that</p>
+<ul>
+    <li>if the <span class="mount-opt">real</span> mount option was specified
+        when the flactrack filesystem was mounted on 'mp' then for each
+        regular file under REAL_PATH with relative (to REAL_PATH) pathname
+        'rp' and file extension '.flac' there will exist a file with the same
+        contents under 'mp' with pathname 'mp'/'rp'</li>
+    <li>for each regular file under ALBUM_PATH with relative (to ALBUM_PATH)
+        pathname 'ap' and file extension '.flac', and for which there also
+        exists a regular file with pathname <span class="path">'ap'.cue</span>
+        there will exist a directory
+        <ul>
+            <li>whose pathname relative to 'mp' is 'ap' with the '.flac'
+                file extension removed, and</li>
+            <li>whose contents consist of a per-track FLAC audio file for
+                each of the tracks on the album (where each per-track FLAC
+                file's filename will be built from its track number, title
+                and artist), except for those files that would have the same
+                pathname as one built from a file under REAL_PATH (as
+                specified above)</li>
+        </ul></li>
+    <li>unless the <span class="mount-opt">nometadata</span> mount option
+        was specified there will also exist a directory with pathname <span
+        class="path">'mp'/.metadata</span> that has the same directory
+        structure under it that 'mp' does (excepting the <span
+        class="path">.metadata</span> subdirectory itself), and that
+        contains files that contain various types of information about all
+        of the FLAC audio files under 'mp'</li>
+</ul>
+
+<p>So for example a per-album FLAC audio file with pathname
+<pre>    ALBUM_PATH/Rainmakers/Tornado_The-Rainmakers.flac</pre>
+will - in the absence of conflicting files from under REAL_PATH - translate
+into a directory with pathname
+<pre>    'mp'/Rainmakers/Tornado_The-Rainmakers</pre>
+that contains per-track FLAC audio files with basenames like
+<pre>
+    01_Snakedance_TheRainmakers.flac
+    02_TornadoOfLove_TheRainmakers.flac
+    03_TheWagesOfSin_TheRainmakers.flac
+    ...
+</pre></p>
+
+<div class="subsection-menu"><a href="#Top">top</a></div>
+
+
+<h3 id="Flac2mp3Filesystem">flac2mp3 Filesystem</h3>
+
+This filesystem takes the following options when it is mounted:
+<ul>
+    <li><span class="mount-opt">flac=FLAC_PATH</span>, which specifies that it
+        is to contain an MP3 audio file corresponding to each FLAC audio file
+        under the directory with pathname FLAC_PATH</li>
+    <li><span class="mount-opt">cache=CACHE_PATH</span>, which specifies that
+        any and all audio files that are automatically generated by the
+        filesystem are to be cached under the directory with pathname
+        CACHE_PATH</li>
+    <li><span class="mount-opt">real=REAL_PATH</span>, which, if present,
+        specifies that &quot;real&quot; MP3 audio files under the directory
+        with pathname REAL_PATH are to be present in the filesystem, appearing
+        in place of any MP3 audio file with the same pathname that might have
+        otherwise been automatically generated. (Each &quot;real&quot; MP3
+        audio file will have the same pathname relative to the filesystem's
+        mount point that it has relative to REAL_PATH)</li>
+    <li><span class="mount-opt">bitrate=RATE</span>, which specifies the
+        bitrate of any and all MP3s that are automatically generated by the
+        filesystem: the bitrates of any &quot;real&quot; MP3 audio files
+        (from under REAL_PATH) will not be affected by this option</li>
+    <li><span class="mount-opt">nometadata</span>, which specifies that
+        no <span class="path">.metadata</span> subdirectory is to be created
+        directly under the mount point: it would have contained
+        subdirectories of files containing metadata describing the audio
+        files in the filesystem</li>
+</ul>
+<p>The <span class="mount-opt">nometadata</span>, <span
+class="mount-opt">bitrate</span> and <span class="mount-opt">real</span>
+options are optional: the others are required. So to mount a flac2mp3
+filesystem you might execute a command that looks something like this
+(assuming that the <span class="program">flac2mp3</span> script from this
+package is in your path):</p>
+<pre>
+    flac2mp3 -o kernel_cache,intr,flac=/audio/flac/tracks,cache=/var/cache/audiofs /audio/mp3/tracks
+</pre></p>
+
+<p>Let 'mp' be the pathname of the directory that is the mount point for a
+flac2mp3 filesystem. Then the contents of 'mp' will be such that</p>
+<ul>
+    <li>if the <span class="mount-opt">real</span> mount option was specified
+        when the flac2mp3 filesystem was mounted on 'mp' then for each regular
+        file under REAL_PATH with relative (to REAL_PATH) pathname 'rp' and
+        file extension '.mp3' there will exist a file with the same contents
+        under 'mp' with pathname 'mp'/'rp'</li>
+    <li>for each regular file under FLAC_PATH with relative (to FLAC_PATH)
+        pathname 'fp' and file extension '.flac', there will exist a file
+        <ul>
+            <li>whose pathname relative to 'mp' is 'fp' with the '.flac'
+                file extension replaced with '.mp3', and</li>
+            <li>whose contents consist of a re-encoding of the FLAC audio
+                file as an MP3 audio file</li>
+        </ul>
+        unless it would have the same pathname as a file built from an MP3
+        file under REAL_PATH (as specified above)</li>
+    <li>unless the <span class="mount-opt">nometadata</span> mount option
+        was specified there will also exist a directory with pathname <span
+        class="path">'mp'/.metadata</span> that has the same directory
+        structure under it that 'mp' does (excepting the <span
+        class="path">.metadata</span> subdirectory itself), and that
+        contains files that contain various types of information about all
+        of the MP3 audio files under 'mp'</li>
+</ul>
+
+<p>So for example a FLAC audio file with pathname
+<pre>    FLAC_PATH/Rainmakers/Tornado_The-Rainmakers/01_Snakedance_TheRainmakers.flac</pre>
+will - in the absence of conflicting files from under REAL_PATH - translate
+into an MP3 audio file with pathname
+<pre>    'mp'/Rainmakers/Tornado_The-Rainmakers/01_Snakedance_TheRainmakers.mp3</pre>
+
+
+<h3 id="Flac2oggFilesystem">flac2ogg Filesystem</h3>
+
+This filesystem takes the following options when it is mounted:
+<ul>
+    <li><span class="mount-opt">flac=FLAC_PATH</span>, which specifies that it
+        is to contain an OGG audio file corresponding to each FLAC audio file
+        under the directory with pathname FLAC_PATH</li>
+    <li><span class="mount-opt">cache=CACHE_PATH</span>, which specifies that
+        any and all audio files that are automatically generated by the
+        filesystem are to be cached under the directory with pathname
+        CACHE_PATH</li>
+    <li><span class="mount-opt">real=REAL_PATH</span>, which, if present,
+        specifies that &quot;real&quot; OGG audio files under the directory
+        with pathname REAL_PATH are to be present in the filesystem, appearing
+        in place of any OGG audio file with the same pathname that might have
+        otherwise been automatically generated. (Each &quot;real&quot; OGG
+        audio file will have the same pathname relative to the filesystem's
+        mount point that it has relative to REAL_PATH)</li>
+    <li><span class="mount-opt">bitrate=RATE</span>, which specifies the
+        bitrate of any and all OGG files that are automatically generated by
+        the filesystem: the bitrates of any &quot;real&quot; OGG audio files
+        (from under REAL_PATH) will not be affected by this option</li>
+    <li><span class="mount-opt">nometadata</span>, which specifies that
+        no <span class="path">.metadata</span> subdirectory is to be created
+        directly under the mount point: it would have contained
+        subdirectories of files containing metadata describing the audio
+        files in the filesystem</li>
+</ul>
+<p>The <span class="mount-opt">nometadata</span>, <span
+class="mount-opt">bitrate</span> and <span class="mount-opt">real</span>
+options are optional: the others are required. So to mount a flac2ogg
+filesystem you might execute a command that looks something like this
+(assuming that the <span class="program">flac2ogg</span> script from this
+package is in your path):</p>
+<pre>
+    flac2ogg -o kernel_cache,intr,flac=/audio/flac/tracks,cache=/var/cache/audiofs /audio/ogg/tracks
+</pre></p>
+
+<p>Let 'mp' be the pathname of the directory that is the mount point for a
+flac2ogg filesystem. Then the contents of 'mp' will be such that</p>
+<ul>
+    <li>if the <span class="mount-opt">real</span> mount option was specified
+        when the flac2ogg filesystem was mounted on 'mp' then for each regular
+        file under REAL_PATH with relative (to REAL_PATH) pathname 'rp' and
+        file extension '.ogg' there will exist a file with the same contents
+        under 'mp' with pathname 'mp'/'rp'</li>
+    <li>for each regular file under FLAC_PATH with relative (to FLAC_PATH)
+        pathname 'fp' and file extension '.flac', there will exist a file
+        <ul>
+            <li>whose pathname relative to 'mp' is 'fp' with the '.flac'
+                file extension replaced with '.ogg', and</li>
+            <li>whose contents consist of a re-encoding of the FLAC audio
+                file as an OGG audio file</li>
+        </ul>
+        unless it would have the same pathname as a file built from an OGG
+        file under REAL_PATH (as specified above)</li>
+    <li>unless the <span class="mount-opt">nometadata</span> mount option
+        was specified there will also exist a directory with pathname <span
+        class="path">'mp'/.metadata</span> that has the same directory
+        structure under it that 'mp' does (excepting the <span
+        class="path">.metadata</span> subdirectory itself), and that
+        contains files that contain various types of information about all
+        of the OGG audio files under 'mp'</li>
+</ul>
+
+<p>So for example a FLAC audio file with pathname
+<pre>    FLAC_PATH/Rainmakers/Tornado_The-Rainmakers/01_Snakedance_TheRainmakers.flac</pre>
+will - in the absence of conflicting files from under REAL_PATH - translate
+into an OGG audio file with pathname
+<pre>    'mp'/Rainmakers/Tornado_The-Rainmakers/01_Snakedance_TheRainmakers.ogg</pre>
+
+
+<h3 id="MusicsearchFilesystem">musicsearch Filesystem</h3>
+
+This filesystem takes the following options when it is mounted:
+<ul>
+    <li><span class="mount-opt">db=DATABASE_PATH</span>, which specifies that
+        DATABASE_PATH is the pathname of the search database file: the file
+        must already exist unless the <span class="mount-opt">catalogue</span>
+        mount option is also specified</li>
+    <li><span class="mount-opt">tags=TAGS_LIST</span>, which specifies that the
+        tags in the colon-separated list TAGS_LIST are the music file tags that
+        can be searched on</li>
+    <li><span class="mount-opt">catalogue=CAT_PATH</span>, which, if present,
+        specifies that CAT_PATH is the pathname of the music catalogue file to
+        use to (re)build the search database file if necessary</li>
+    <li><span class="mount-opt">base=BASE_PATH</span>, which specifies that
+        the pathnames of all of the music files obtained from a music
+        catalogue will be assumed to be relative to BASE_PATH</li>
+</ul>
+<p>The <span class="mount-opt">catalogue</span> and <span
+class="mount-opt">base</span> options are optional: the others are required.
+So to mount a musicsearch filesystem you might execute a command that looks
+something like this (assuming that the <span class="program">musicsearch</span>
+script from this package is in your path):</p>
+<pre>
+    musicsearch -o kernel_cache,intr,db=/audio/metadata/search.db,tags=TITLE:ARTIST:GENRE /audio/search
+</pre>
+
+<p>Let 'mp' be the pathname of the directory that is the mount point for a
+musicsearch filesystem. Then 'mp' will contain a subdirectory for each tag
+in the list specified with the <span class="mount-opt">tags</span> mount
+option, converted to all lowercase. So if a musicsearch filesystem was mounted
+using the example command shown above then the first level of the directory
+structure under 'mp' would look like this:
+<pre>
+    'mp'/
+        artist/
+        genre/
+        title/
+</pre></p>
+
+<p>Each of those subdirectories would contain a subdirectory named VAL
+for each distinct value VAL that at least one audio file has for the
+corresponding tag. So in our example if all of the music files have as
+the value of their GENRE tag either <code>Rock</code>, <code>Classical</code>
+or <code>Spoken Word</code> then the first level of the directory
+structure under 'mp'/genre would look like this:
+<pre>
+    'mp'/
+        genre/
+            Classical/
+            Rock/
+            Spoken Word/
+</pre>
+
+<p>Under each of the tag-value subdirectories will be a symlink to each
+and every file under the music directory that has that tag value for that
+tag. There will also be a subdirectory named <code>and</code> whose
+contents will be the same as the contents of 'mp' except that the
+subdirectory corresponding to the tag will be omitted. In this way all
+of the files that have given values for one or more tags can be found.
+For example, the contents of the directory
+<pre>
+    'mp'/artist/Elvis Costello/and/genre/Classical
+</pre>
+will contain symlinks to all of the audio files in the music directory
+whose <code>ARTIST</code> tag has the value <code>Elvis Costello</code>
+and whose <code>GENRE</code> tag has the value <code>Classical</code>.
+
+<p>Since everything in a musicsearch filesystem is just a file, in a
+shell the usual wildcards can be used as well. For example, executing
+the command
+<pre>
+    ls 'mp'/artist/Elvis*/and/title/*Ever*'
+</pre>
+in a bash shell will output the pathnames of symlinks to all of the
+audio files in the music directory by artists whose names start with
+'Elvis', and whose titles contain the text 'Ever'. So it might
+contain symlinks to both Elvis Presley's &quot;Didja' Ever&quot; and
+Elvis Costello and the Attractions' &quot;Everyday I Write The
+Book&quot; (as well as Elvis Costello's &quot;You Tripped At Every
+Step&quot;).
+
+
+<div class="section-menu"><a href="#Top">top</a></div>
+<hr/>
+<h2><a id="MusicDirectory">Music Directory</a></h2>
+
+
+<h3 id="MusicDirectoryStructure">Structure</h3>
+
+<p class="note"><span class="heading">Note</span>: this section mainly
+describes a music directory that is built and maintained using the default
+configuration: that is, the configuration specified in the configuration
+files that are installed as part of this package. The configuration can be
+changed in order to modify a music directory, but the details of how to do
+that aren't explained in this document.</p>
+
+<p>A <span class="def" id="music-directory-def">music directory</span> is a
+directory that is built and maintained using this package, and under which is
+organized a collection of audio files and other, related files. One thing to
+note about such music directories is that there are no files under them that
+can't be regenerated, and so a music directory and everything under is can be
+deleted and rebuilt at any time without fear of losing anything
+irretrievably.</p>
+
+<p>The <span class="def" id="root-directory-def">root directory</span> of a
+music directory is the music directory itself. The following is an annotated
+representation of the structure of a music directory built from the default
+configuration, assuming that the root directory is <span
+class="path">/extra/media/audio</span>:</p>
+
+<pre>
+  <strong>Pathname</strong>                    <strong>Configuration Property</strong>
+
+  /extra/media/audio/         -- rootDir (1)
+      real/                   -- realFilesSubdir (2)
+          flac/
+              albums/
+              tracks/         -- flactrackRealDir (3)
+          mp3/
+              tracks/         -- flac2mp3RealDir (4)
+      all/                    -- allFilesSubdir, baseSubdir (5)
+          flac/
+              albums/         -- flactrackAlbumsDir (6)
+              tracks/         -- flactrackMountPoint, flac2mp3FlacDir (7)
+          mp3/
+              tracks/         -- flac2mp3MountPoint (8)
+      other/                  -- otherSubdir (9)
+          bin/                -- binSubdir (10)
+          metadata/           -- metadataSubdir (11)
+              catalogue.xml   -- catalogueFilename (12)
+              *.db
+          playlists/          -- playlistsSubdir (13)
+              custom/         -- customPlaylistsSubdir (14)
+              generated/      -- generatedPlaylistsSubdir (15)
+                  *.m3u
+          ratings/            -- ratingsSubdir (16)
+              *.ratings
+              *.db
+          system/             -- systemSubdir (17)
+      README.txt
+
+  <strong>Annotations</strong>
+</pre>
+<ol class="annotations-list">
+    <li><span class="config-var">rootDir</span>. The music directory's root
+        directory.</li>
+    <li><span class="config-var">realFilesSubdir</span>. Contains symlinks to
+        all of the audio files under all of the data directories. (They're
+        &quot;real&quot; audio files as distinct from the audio files that
+        are automatically generated by any audio filesystems mounted under
+        the music directory.)</li>
+    <li><span class="config-var">flactrackRealDir</span>. Contains the real
+        audio files in FLAC format that represent individual tracks rather
+        than whole albums: they're merged in with the per-track FLAC audio
+        files that the flactrack audio filesystem autogenerates.</li>
+    <li><span class="config-var">flac2mp3RealDir</span>. Contains the real
+        audio files in MP3 format that represent individual tracks:
+        they're merged in with the per-track MP3 files that the flac2mp3
+        audio filesystem autogenerates.</li>
+    <li><span class="config-var">allFilesSubdir</span>, <span
+        class="config-var">baseSubdir</span>. Contains a copy of of each of
+        the audio files in the collection in each of the formats. All of the
+        audio filesystems are mounted under this directory.</li>
+    <li><span class="config-var">flactrackAlbumsDir</span>. Contains the FLAC
+        audio files that represent entire albums, and for each of whose tracks
+        the flactrack filesystem autogenerates a (per-track) FLAC audio file.</li>
+    <li><span class="config-var">flactrackMountPoint, flac2mp3FlacDir</span>.
+        Contains the FLAC audio files that represent individual tracks rather
+        than whole albums: it's where the flactrack audio filesystem is
+        mounted, which merges together the &quot;real&quot; per-track FLAC files
+        from under the data directories and the ones that are autogenerated
+        from album FLAC files by the flactrack filesystem.</li>
+    <li><span class="config-var">flac2mp3MountPoint</span>. Contains the
+        MP3 audio files that represent individual tracks: it's where the
+        flac2mp3 audio filesystem is mounted, which merges together the
+        &quot;real&quot; per-track MP3 files from under the data directories
+        and the ones that are autogenerated from the per-track FLAC files.</li>
+    <li><span class="config-var">otherSubdir</span>. Contains all of the files
+        that aren't audio files but that have some sort of relationship to
+        them.</li>
+    <li><span class="config-var">binSubdir</span>. Contains (symlinks to)
+        scripts and other binaries/programs that operate on a music directory,
+        or on audio files or files related to audio files.</li>
+    <li><span class="config-var">metadataSubdir</span>. Contains metadata
+        files: that is, files whose contents describe some or all of the
+        audio files in this music directory. The <span class="path">*.db</span>
+        files are databases built from the music directory catalogue: see the
+        <span class="config-var">catalogueFilename</span> configuration variable's
+        annotation. This directory is actually just a symlink to the directory
+        whose pathname is specified using the <span
+        class="config-var">sourceMetadataDir</span> configuration variable.</li>
+    <li><span class="config-var">catalogueFilename</span>. The basename of
+        the <span class="def">music directory catalogue</span>: an XML file
+        that contains a great deal of information about all of the audio files
+        in this music directory. Several other metadata files and files
+        otherwise related to audio files are generated from the contents of
+        this file.</li>
+    <li><span class="config-var">playlistsSubdir</span>. Contains playlists
+        consisting of audio files from this music directory.</li>
+    <li><span class="config-var">customPlaylistsSubdir</span>. Contains
+        &quot;custom&quot; playlists: that is, playlists that were created
+        and saved by users (rather than being autogenerated). This directory
+        is actually just a symlink to the directory whose pathname is
+        specified using the <span class="config-var">sourcePlaylistsDir</span>
+        configuration variable.</li>
+    <li><span class="config-var">generatedPlaylistsSubdir</span>. Contains
+        playlists that are automatically generated. They're regenerated
+        whenever the music directory is rebuilt.</li>
+    <li><span class="config-var">ratingsSubdir</span>. Contains files that
+        map a rating to each of the (original) audio files in this music
+        directory. The <span class="path">*.ratings</span> files are plain
+        text files that are the origins of the ratings information, and the
+        <span class="path">*.db</span> files are database files built from
+        the information in the <span class="path">*.ratings</span> files. By
+        default there's a single &quot;main&quot; ratings file named
+        <span class="path">main.ratings</span>, but other ratings files can
+        be added. This directory is actually just a symlink to the directory
+        whose pathname is specified using the <span
+        class="config-var">sourceRatingsDir</span> configuration variable.</li>
+    <li><span class="config-var">systemSubdir</span>. Contains files and
+        directories that are used internally by programs that operate on
+        this music directory. The names, purposes and existences of these
+        files may change without notice, and so should not be relied
+        upon.</li>
+</ol>
+
+<div class="subsection-menu"><a href="#Top">top</a></div>
+
+
+<h3 id="MusicDirectoryMaintenance">Building and Maintenance</h3>
+
+<p>Once <a href="#Configuration">configuration files</a> have been set up
+properly the music directory can be built by executing - with no arguments -
+the program <span class="program">build-music-directory</span> that is
+included in this package. Assuming that the <a href="#root-directory-def">root
+directory</a> that is specified in the configuration files is an existing and
+empty directory, once the program has finished running the music directory
+should be fully populated and ready for use.</p>
+
+<p>A music directory is fairly static, so you may need to delete and rebuild
+it from time to time, for example if the contents of one or more of the <a
+href="#data-directories-def">data directories</a> have changed. <strong>Do
+<em>not</em> just delete everything under the music directory!</strong>
+Instead execute the <span class="program">dismantle-music-directory</span>
+program (with no arguments). This will delete everything under the music
+directory as well as unmount any audio filesystems mounted under it and stop
+any daemon processes that were started as part of building it (or activating
+it: see below). The <span class="program">build-music-directory</span> program
+can be used to rebuild the music directory again.</p>
+
+<p>(Sometimes you just need to unmount the audio filesystems and stop the
+daemon processes and then remount and restart them (which is much faster
+than dismantling and rebuilding the music directory): to do this you can
+execute the <span class="program">deactivate-music-directory</span> program
+followed by the <span class="program">activate-music-directory</span>
+program.)</p>
+
+<p>Another aspect of maintaining a music directory involves ensuring that the
+caches used by the audio filesystems mounted under it don't grow too large,
+usually by deleting the oldest of the cached files until the total size
+of all of the files under a cache directory no longer exceeds a specified
+maximum. This can be done by executing the <span
+class="program">maintain-cache-directory</span> program periodically for
+each cache directory. For example, a line like this
+<pre>
+    */20 * * * * /usr/bin/maintain-cache-directory -l /var/log/audiofs.log 10G /extra/media/caches</pre>
+
+(after adjusting and adapting the pathnames) could be added to a
+<code>crontab</code> file to check every 20 minutes whether the total
+size of all of the files under the cache directory <span
+class="path">/extra/media/caches</span> is greater than 10 gigabytes, and then
+delete the oldest files under it until its total size is less than or equal to
+that. Note that one such line would be needed for each cache directory.</p>
+
+<p class="note"><span class="heading">Note</span>: there is a caching
+filesystem included in this software package, but it is obsolete and no
+longer used by the rest of the programs. It is still present in order to
+allow others to fix and/or improve it if they have a use for it.</p>
+
+
+<div class="section-menu"><a href="#Top">top</a></div>
+<hr/>
+<h2><a id="Mpd">Music Player Daemon (MPD) Integration</a></h2>
+
+<p>The following is a brief description of the programs in this package
+that integrate with the MPD music server. They're usually aliased or otherwise
+mapped to more concise commands or key combinations. References to the current
+track and playlist refer to those of the default MPD server.</p>
+<ul>
+    <li><span class="program">mpd-add-tracks</span>: adds tracks to the
+        end of the current playlist.</li>
+    <li><span class="program">mpd-create-database</span>: creates a database
+        file for an MPD server that contains information for all of the
+        audio files under the root directory. Note that the MPD server
+        should be stopped while its database file is being updated: thus
+        this program's output is usually directed to a temporary file that
+        is then (while the MPD server is stopped) renamed to have the
+        &quot;real&quot; database file's pathname. Using this program is the
+        preferred way to build an MPD database file for a music directory,
+        since most of the files don't actually exist as real files: if you
+        use '<code>mpd update</code>' or a similar command to update the MPD
+        database then when it attempts to read each audio file's tags it will
+        cause the audio filesystems to autogenerate the file, which can be a
+        relatively lengthy operation.</li>
+    <li><span class="program">mpd-speak-current-track-info</span>: speaks
+        information about the current track: exactly what information is
+        spoken can be specified by providing a format string.</li>
+</ul>
+<ul>
+    <li><span class="program">mpd-increase-rating</span>: increases the
+        rating assigned to the current track by a specified amount (where
+        the amount may be derived from the program's name if it isn't
+        specified using an option).</li>
+    <li><span class="program">mpd-decrease-rating</span>: decreases the
+        rating assigned to the current track by a specified amount (where
+        the amount may be derived from the program's name if it isn't
+        specified using an option).</li>
+    <li><span class="program">mpd-set-rating</span>: sets the rating
+        assigned to the current track to a specified value (where the value
+        may be derived from the program's name if it isn't specified using
+        an option).</li>
+</ul>
+<ul>
+    <li><span class="program">mpd-show-current-track-info</span>: causes
+        information about the current track to be displayed on the
+        screen. Note that the displayed information is <em>not</em>
+        updated when it changes (even when the current track changes): use
+        the <span class="program">mpd-refresh-current-track-info</span>
+        program to update it manually.</li>
+    <li><span class="program">mpd-refresh-current-track-info</span>:
+        causes any information about the current track that is currently
+        being displayed (as by the <span
+        class="program">mpd-show-current-track-info</span> program) to
+        be updated.</li>
+    <li><span class="program">mpd-hide-current-track-info</span>: causes
+        information about the current track to no longer be displayed on
+        the screen, if it's currently being displayed on the screen.</li>
+    <li><span class="program">mpd-toggle-current-track-info</span>: shows
+        information about the current track (as is done by <span
+        class="program">mpd-show-current-track-info</span>) if it's currently
+        hidden, and hides it (as is done by <span
+        class="program">mpd-hide-current-track-info</span>) if it's currently
+        being shown.</li>
+</ul>
+
+<p>More information about the above programs and the options that they accept
+can be obtained by executing them with the '-?' option: this will cause them
+to output a detailed help message.</p>
+
+
+<div class="section-menu"><a href="#Top">top</a></div>
+<hr/>
+<address>
+Copyright (C) 2008-2011 by James MacKay (<a href="mailto:jmackay@steelcandy.com">jmackay@steelcandy.com</a>)<br/>
+</address>
+
+</body>
+</html>

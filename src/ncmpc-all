@@ -1,0 +1,266 @@
+#!/usr/bin/env python
+#
+# Copyright (C) James MacKay 2010
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+from audiofs import config, musicfs
+import audiofs.utilities as ut
+
+import os.path
+import sys
+
+# Constants
+
+_conf = config.obtain()
+
+# Default values.
+_defaultScreenConfig = "~/.screenrc"
+_defaultClientProgram = "ncmpc"
+_defaultScreenName = "ncmpc-all"
+_defaultScreenProgram = "screen"
+
+# Commands and command formats.
+_mainScreenCmdFmt = "'%s' -S '%s' -c '%s'"
+_screenWindowCmdFmt = _defaultScreenProgram + " -t \"%s\" %i %s"
+    # I think we always want to use 'screen' here, don't we?
+_clientCmdFmt = "'%s' -h %s -p %i"
+
+# The start of the filename of the generated config file that we
+# pass to the 'screen' commands that we run.
+_generatedScreenConfigFilePrefix = "screenrc-generated-"
+
+
+# Classes.
+
+class Program(ut.ut_AbstractProgram):
+    """
+    Represents a program that starts the 'screen' program so that there's a
+    window containing an instance of the 'ncmpc' MPD curses client for each
+    and every MPD server (that is configured in the audiofs configuration
+    files).
+    """
+
+    def _usageMessage(self, progName, shortHelpOpts, longHelpOpts,
+                      helpOptionsDesc):
+        result = """
+usage: %(progName)s %(shortHelpOpts)s %(longHelpOpts)s [-c client-program] [-n name] [-p screen-program] [-s screen-config]
+
+which starts the '%(defaultScreenProgram)s' program so that there's a window
+containing an instance of the '%(defaultClient)s' client for each and
+every MPD server.
+
+If the optional '-c' option is specified then the program
+with pathname 'client-program' will be run in each '%(defaultScreenProgram)s'
+window; otherwise the program with pathname '%(defaultClient)s'
+will be run. ('client-program' should accept the same
+command line arguments as '%(defaultClient)s' does: especially the '-h'
+and '-p' options.)
+
+If the optional '-n' option is specified then the screen's
+name will be 'name': otherwise it defaults to '%(defaultScreenName)s'.
+
+If the optional '-p' option is specified then the screen
+program with pathname 'screen-program' will be used in
+place of the program '%(defaultScreenProgram)s'.
+
+If the optional '-s' option is specified then the '%(defaultScreenProgram)s'
+configuration file with pathname 'screen-config' will be used
+as the basis of the configuration file that will be given to
+the '%(defaultScreenProgram)s' command that we start; otherwise the file with
+pathname '%(defaultScreenConfig)s' will be used.
+%(helpOptionsDesc)s""" % {
+        "progName": progName, "shortHelpOpts": shortHelpOpts,
+        "longHelpOpts": longHelpOpts, "helpOptionsDesc": helpOptionsDesc,
+        "defaultClient": _defaultClientProgram,
+        "defaultScreenConfig": _defaultScreenConfig,
+        "defaultScreenName": _defaultScreenName,
+        "defaultScreenProgram": _defaultScreenProgram }
+        assert result
+        return result
+
+    def _shortOptions(self):
+        result = "c:n:p:s:"
+        assert result is not None
+        return result
+
+    def _buildInitialArgumentsMap(self):
+        result = {
+            "screenConfig": _defaultScreenConfig,
+            "screenName": _defaultScreenName,
+            "screenProgram": _defaultScreenProgram,
+            "clientProgram": _defaultClientProgram
+        }
+        assert result is not None
+        return result
+
+    def _processOption(self, opt, val, argsMap):
+        assert opt
+        # 'val' may be None
+        assert argsMap is not None
+        result = True
+        if opt == "-c":
+            argsMap["clientProgram"] = val
+        elif opt == "-n":
+            argsMap["screenName"] = val
+        elif opt == "-p":
+            argsMap["screenProgram"] = val
+        elif opt == "-s":
+            argsMap["screenConfig"] = val
+        else:
+            result = self._handleUnknownOption(opt)
+        return result
+
+    def _processNonOptionArguments(self, args, argsMap):
+        assert args is not None
+        assert argsMap is not None
+        result = True
+        numArgs = len(args)
+        if numArgs > 0:
+            result = False
+            self._fail("Too many arguments")
+        return result
+
+    def _execute(self, argsMap):
+        assert argsMap is not None
+        result = 0
+
+        srcConfig = argsMap["screenConfig"]
+        srcConfig = ut.ut_expandedAbsolutePathname(srcConfig)
+        name = argsMap["screenName"]
+        program = argsMap["screenProgram"]
+        client = argsMap["clientProgram"]
+        conf = self._createScreenConfigurationFile(srcConfig, client)
+        if conf is not None:
+            cmd = _mainScreenCmdFmt % (program, name, conf)
+            if ut.ut_executeShellCommand(cmd) is None:
+                result = 2
+                self._fail("Executing the '%s' command failed (command "
+                           "was: %s)" % (program, cmd))
+        else:
+            # Note: '_fail()' has already been called.
+            result = 1
+        assert result >= 0
+        return result
+
+    def _createScreenConfigurationFile(self, srcConfigFile, clientProgram):
+        """
+        Creates and returns the pathname of the configuration file we're to
+        pass to the 'screen' program, where 'srcConfigFile' is the pathname
+        of the 'screen' configuration file we're to use as the start of the
+        one whose pathname we return, or returns None if the file couldn't
+        be created.
+
+        Iff this method returns None then _fail() will have already been
+        called with a message describing why we failed.
+        """
+        assert srcConfigFile is not None
+        assert clientProgram is not None
+        result = None
+        msg = None
+        try:
+            try:
+                src = file(srcConfigFile, "r")
+            except:
+                msg = "because we\ncouldn't read the '%s' configuration " \
+                    "file with pathname\n'%s'\nthat it was to be based on" % \
+                    (_defaultScreenProgram, srcConfigFile)
+                raise
+
+            f = None
+            try:
+                tmpDir = _conf.tempDir
+                try:
+                    (f, result) = ut.ut_createTemporaryFile(tmpDir,
+                                        _generatedScreenConfigFilePrefix)
+                except:
+                    msg = "because\nwe couldn't create it for writing in " \
+                        "the temporary directory '%s'" % tmpDir
+                    raise
+
+                # Copy 'srcConfigFile''s contents.
+                try:
+                    while True:
+                        line = src.readline()
+                        if not line:
+                            break
+                        f.write(line)
+                except:
+                    msg = "because\ncopying the contents of the '%s' " \
+                        "configuration file that\nit's based on into it " \
+                        "failed" % _defaultScreenProgram
+                    raise
+
+                # Then write out the 'screen' commands to open a window
+                # for each MPD server.
+                try:
+                    i = 0
+                    for id in _conf.allMpdServerIds():
+                        self._writeConfigurationLineForServer(id, f, i,
+                                                              clientProgram)
+                        i += 1
+                except:
+                    msg = "because\nadding the line to it that would have " \
+                          "opened a window\nfor the MPD server with ID " \
+                          "'%s' failed" % id
+                    raise
+
+            finally:
+                if f is not None:
+                    # If we fail to close the file we're writing to then it
+                    # may be incomplete, so we assume it is, delete it and
+                    # return failure.
+                    f.close()
+        except:
+            ut.ut_tryToDeleteAll(result)
+            result = None
+            if msg is None:
+                msg = "due to an\nunexpected error"
+            self._fail("Couldn't create the '%s' configuration file %s" %
+                       (_defaultScreenProgram, msg))
+        # 'result' may be None
+        return result
+
+    def _writeConfigurationLineForServer(self, serverId, f, windowIndex,
+                                         clientProgram):
+        """
+        Writes out, using the file object 'f', the line in a 'screen'
+        config file that will open an instance of the MPD client program
+        with pathname 'clientProgram' in a new window with 0-based index
+        'windowIndex'.
+
+        An exception will be raised iff the line isn't written out
+        successfully.
+        """
+        assert serverId is not None
+        assert f is not None
+        assert clientProgram is not None
+        assert windowIndex >= 0
+
+        desc = _conf.mpdServerDescription(serverId)
+        assert desc is not None
+        (host, port) = _conf.mpdServer(desc)
+
+        subcmd = _clientCmdFmt % (clientProgram, host, port)
+        print "subcmd = %s" % subcmd
+        cmd = _screenWindowCmdFmt % (serverId, windowIndex, subcmd)
+        print "cmd = %s" % cmd
+        f.write(cmd)
+        f.write("\n")
+
+
+# Main program.
+
+Program().run()

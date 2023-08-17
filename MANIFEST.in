@@ -1,0 +1,2 @@
+recursive-include doc *.html
+recursive-include etc *.example

@@ -1,0 +1,78 @@
+#!/usr/bin/env python
+#
+# Copyright (C) James MacKay 2008
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+import sys
+import os.path
+
+from audiofs import config, musicfs
+import audiofs.utilities as ut
+
+
+# Constants.
+
+_conf = config.obtain()
+
+
+# Classes.
+
+class Program(ut.ut_AbstractProgram):
+    """
+    Represents programs that catalogue a music directory.
+    """
+
+    def _usageMessage(self, progName, shortHelpOpts, longHelpOpts,
+                      helpOptionsDesc):
+        return """
+usage: %s %s %s
+
+Builds (or rebuilds) an XML file that catalogues all of the audio
+files in all of the audio filesystems.
+%s""" % (progName, shortHelpOpts, longHelpOpts, helpOptionsDesc)
+
+    def _buildInitialArgumentsMap(self):
+        result = {}
+        assert result is not None
+        return result
+
+    def _processOption(self, opt, val, argsMap):
+        assert opt
+        # 'val' may be None
+        assert argsMap is not None
+        return self._handleUnknownOption(opt)  # we don't take any options
+
+    def _processNonOptionArguments(self, args, argsMap):
+        assert args is not None
+        assert argsMap is not None
+        result = True
+        if len(args):
+            self._fail("Too many arguments")
+            result = False
+        return result
+
+    def _execute(self, argsMap):
+        assert argsMap is not None
+        result = 0
+        mm = musicfs.fs_MusicMetadataManager()
+        mm.fs_rebuildCatalogueFile(sys.stderr)
+        assert result >= 0
+        return result
+
+
+# Main program.
+
+Program().run()

@@ -1,0 +1,115 @@
+#!/usr/bin/env python
+#
+# Copyright (C) James MacKay 2009
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+from audiofs import mpd, config
+
+import audiofs.utilities as ut
+
+
+# Constants.
+
+_conf = config.obtain()
+
+# Arguments map keys
+_serverIdKey = "serverId"
+_serverDescKey = "serverDesc"
+
+
+# Classes.
+
+class Program(mpd.mp_AbstractMpdProgram):
+    """
+    Represents programs that select the MPD server that is to be made the
+    currently selected MPD server (if it isn't already).
+    """
+
+    def _usageMessage(self, progName, shortHelpOpts, longHelpOpts,
+                      helpOptionsDesc):
+        result = """
+usage: %s %s %s server-id
+
+which selects the MPD server whose server ID best matches
+'server-id' to be the server that is to be made the currently
+selected MPD server, if it isn't already the current server.
+
+Note: if a radio server is selected and wasn't already the
+current server then its current track will also start playing
+automatically (as though a radio station had been selected).
+%s""" % (progName, shortHelpOpts, longHelpOpts, helpOptionsDesc)
+        assert result
+        return result
+
+    def _buildInitialArgumentsMap(self):
+        result = { _serverIdKey: None, _serverDescKey: None }
+        assert result is not None
+        return result
+
+    def _processOption(self, opt, val, argsMap):
+        assert opt
+        # 'val' may be None
+        assert argsMap is not None
+        return self._handleUnknownOption(opt)  # we don't take any options
+
+    def _processNonOptionArguments(self, args, argsMap):
+        assert args is not None
+        assert argsMap is not None
+        result = True
+        numArgs = len(args)
+        if numArgs > 1:
+            self._fail("Too many arguments")
+            result = False
+        elif numArgs == 0:
+            self._fail("No server ID specified")
+            result = False
+        else:
+            (id, desc) = self._smartMatchMpdServerIds(args[0])
+            if id is not None:
+                argsMap[_serverIdKey] = id
+                argsMap[_serverDescKey] = desc
+            else:
+                result = False
+                self._fail(desc)
+        return result
+
+    def _execute(self, argsMap):
+        assert argsMap is not None
+        result = 0
+        id = argsMap[_serverIdKey]
+        desc = argsMap[_serverDescKey]
+        try:
+            assert id is not None
+            assert desc is not None
+            oldMpd = mpd.mp_Mpd()  # the currently selected server
+            newMpd = mpd.mp_createMpdServerFromDescription(desc)
+            if newMpd.makeSelectedServer():
+                # We weren't already the selected server.
+                oldMpd.pause()
+                if _conf.isRadioMpdServer(desc):
+                    newMpd.pause()
+                    newMpd.playOrPause()  # starts it playing
+        except:
+            self._fail("Failed to make the server with ID '%s' "
+                       "the currently selected MPD server" % id)
+            result = 1
+        assert result >= 0
+        return result
+
+
+# Main program.
+
+Program().run()

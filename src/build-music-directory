@@ -1,0 +1,115 @@
+#!/usr/bin/env python
+#
+# $Id: build-music-directory,v 1.3 2010/01/29 21:55:44 jgm Exp $
+#
+# Builds a music directory from scratch: the directory must exist and be
+# empty.
+#
+# See dismantle-music-directory, activate-music-directory.
+#
+# Copyright (C) James MacKay 2008
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+from audiofs import admin, config
+
+
+# Constants.
+
+_conf = config.obtain()
+
+
+# Classes.
+
+class Program(admin.ad_AbstractMusicDirectoryProgram):
+    """
+    Represents programs that build a music directory.
+    """
+
+    def _ad_otherOptionsUsage(self):
+        """
+        All of this program's other options, as they would appear in the
+        first line of the program's usage message.
+        """
+        #assert result is not None
+        return "[-d] [-p]"
+
+    def _ad_otherOptionsDescription(self):
+        """
+        A description of this program's other options.
+        """
+        #assert result is not None
+        return """
+
+If the optional '-p' option is specified then for the music
+directory and each directory anywhere under it a playlist is
+generated for all of the music files in and under that
+directory.
+
+If the optional '-d' option is specified then documentation
+is generated describing the albums and tracks in and under
+the music directory."""
+
+    def _ad_otherShortOptions(self):
+        """
+        Returns our other short options as a string, in a form suitable for
+        being appended to another string to build the result of our
+        _shortOptions() method.
+        """
+        #assert result is not None
+        return "dp"
+
+    def _ad_addOtherInitialArguments(self, argsMap):
+        """
+        Adds any other initial arguments to 'argsMap'.
+        """
+        argsMap["doGeneratePlaylists"] = False
+        argsMap["doGenerateDocs"] = False
+
+    def _ad_processOtherOption(self, opt, val, argsMap):
+        """
+        Processes the other option 'opt' and its associated value 'val' by
+        updating 'argsMap' appropriately and returning True if successful,
+        or reports failure and returns False if 'opt' isn't one of our
+        other options or it and/or 'val' are somehow incorrect.
+        """
+        result = True
+        if opt == "-d":
+            argsMap["doGenerateDocs"] = True
+        elif opt == "-p":
+            argsMap["doGeneratePlaylists"] = True
+        else:
+            result = admin.ad_AbstractMusicDirectoryProgram. \
+                        _ad_processOtherOption(self, opt, val, argsMap)
+        return result
+
+
+    def _ad_mainUsageDescription(self):
+        result = """which builds the music directory '%s',
+provided it exists and is empty.""" % _conf.rootDir
+        assert result
+        return result
+
+    def _ad_administer(self, ad, argsMap):
+        assert ad is not None
+        assert argsMap is not None
+        ad.ad_buildMusicDirectory(doGeneratePlaylists = \
+            argsMap["doGeneratePlaylists"], doGenerateDocs = \
+            argsMap["doGenerateDocs"])
+
+
+# Main program.
+
+Program().run()

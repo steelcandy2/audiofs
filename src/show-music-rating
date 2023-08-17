@@ -1,0 +1,193 @@
+#!/usr/bin/env python
+#
+# Copyright (C) James MacKay 2009
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+from audiofs import config, musicfs
+import audiofs.utilities as ut
+
+import os.path
+
+
+# Constants
+
+_conf = config.obtain()
+
+baseDir = ut.ut_really(_conf.baseDir)
+
+# The formats of the lines that we output to standard out.
+ratingFmt = "%-2i"
+missingRating = "%-2s" % "?"
+shortLineFmt = "%s %s"
+longLineFmt = "%s %s  [%s]"
+
+
+# Classes.
+
+class Program(ut.ut_AbstractProgram):
+    """
+    Represents a program that displays the ratings of one of more music
+    files, provided they're under the music directory.
+    """
+
+    def _usageMessage(self, progName, shortHelpOpts, longHelpOpts,
+                      helpOptionsDesc):
+
+        result = """
+usage: %(progName)s %(shortHelpOpts)s %(longHelpOpts)s [-r base] [-s] [-p] path ...
+
+which causes a line to be output to standard out for each of the
+music files whose pathnames are specified. Each line consists of
+the music file's current rating, one or more spaces and then the
+basename of the music file. Directories (including links to
+directories) will be silently ignored.
+
+The music file's basename from the specified pathname isn't the
+same as the basename from its "real" pathname then the latter
+basename will be shown, followed by the other basename is square
+brackets.
+
+If the optional '-r' option is specified then the music files'
+ratings will be obtained from the ratings file whose base name
+is 'base': otherwise the ratings are obtained from the main
+ratings file.
+
+If the optional '-s' option is specified then strict checking is
+done: files that aren't under the base music directory are
+reported as errors, as are files without ratings. By default the
+former are ignored and the latter have '?' shown as their
+ratings.
+
+If the optional '-p' option is specified then full pathnames
+rather than file basenames appear in the lines output to the
+standard output. The specified pathname is always output in
+this case: a music file's "real" pathname is never included.
+%(helpOptionsDesc)s
+""" % { "progName": progName, "shortHelpOpts": shortHelpOpts,
+        "longHelpOpts": longHelpOpts, "helpOptionsDesc": helpOptionsDesc }
+        assert result
+        return result
+
+    def _shortOptions(self):
+        result = "r:ps"
+        assert result is not None
+        return result
+
+    def _buildInitialArgumentsMap(self):
+        result = {
+            "paths": None,
+            "ratingsBase": None,
+            "useFilenames": True,
+            "isStrict": False
+        }
+        assert result is not None
+        return result
+
+    def _processOption(self, opt, val, argsMap):
+        assert opt
+        # 'val' may be None
+        assert argsMap is not None
+        result = True
+        if opt == "-p":
+            argsMap["useFilenames"] = False
+        elif opt == "-s":
+            argsMap["isStrict"] = True
+        elif opt == "-r":
+            argsMap["ratingsBase"] = val
+        else:
+            result = self._handleUnknownOption(opt)
+        return result
+
+    def _processNonOptionArguments(self, args, argsMap):
+        assert args is not None
+        assert argsMap is not None
+        result = True
+        numArgs = len(args)
+        if numArgs > 0:
+            argsMap["paths"] = args
+        else:
+            result = False
+            self._fail("No music file pathnames were specified")
+        return result
+
+    def _execute(self, argsMap):
+        assert argsMap is not None
+        paths = argsMap["paths"]
+        ratingsBase = argsMap["ratingsBase"]
+        useFilenames = argsMap["useFilenames"]
+        isStrict = argsMap["isStrict"]
+
+        mm = musicfs.fs_MusicMetadataManager()
+        bnf = os.path.basename
+        isdir = os.path.isdir
+        remPrefix = ut.ut_removePathnamePrefix
+        really = ut.ut_really
+
+        result = 0
+        origPaths = []
+        pathsToRate = []
+        for p in [fp for fp in paths if not isdir(fp)]: # ignore dirs
+            #self._debug("baseDir = [%s]" % baseDir)
+            ap = remPrefix(really(p), baseDir)
+            if ap is None:
+                # Note that we still process the remaining files.
+                if isStrict:
+                    result = 1
+                    self._fail("The file '%s' isn't under\nthe base "
+                               "music directory '%s'" % (p, baseDir))
+            elif not isdir(ap): # ignore links to dirs too
+                origPaths.append(p)
+                pathsToRate.append(ap)
+        sz = len(pathsToRate)
+        assert sz == len(origPaths)
+
+        ratings = mm.fs_allRatings(pathsToRate, ratingsBase)
+        assert sz == len(ratings)
+        for i in xrange(sz):
+            doShow = True
+            r = ratings[i]
+            if r is None:
+                result = 2
+                if isStrict:
+                    doShow = False
+                    rb = ratingsBase
+                    if rb is None:
+                        rb = _conf.mainRatingsBasename
+                    self._fail("Couldn't find a rating for the music "
+                        "file '%s': perhaps there's no '%s' ratings file" %
+                        (origPaths[i], rb))
+            if doShow:
+                if r is not None:
+                    r = ratingFmt % r
+                else:
+                    r = missingRating
+                if useFilenames:
+                    af = bnf(pathsToRate[i])
+                    f = bnf(origPaths[i])
+                    if af == f:
+                        line = shortLineFmt % (r, af)
+                    else:
+                        line = longLineFmt % (r, af, f)
+                else:
+                    line = shortLineFmt % (r, origPaths[i])
+                print line
+        assert result >= 0
+        return result
+
+
+# Main program.
+
+Program().run()

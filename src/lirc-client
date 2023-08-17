@@ -1,0 +1,598 @@
+#!/usr/bin/env python
+#
+# Copyright (C) James MacKay 2010
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+from audiofs import config
+import audiofs.utilities as ut
+
+import os.path
+import socket
+import sys
+import time
+
+
+# Constants, part 1.
+
+_conf = config.obtain()
+
+# Default values.
+_defaultBasenameStart = "lirc-client"
+_defaultConfigFileExt = ".conf"
+_defaultMapFileExt = ".map"
+
+_defaultConfigFileBasename = _defaultBasenameStart + _defaultConfigFileExt
+_defaultMapFileBasename = _defaultBasenameStart + _defaultMapFileExt
+
+_defaultSourcePathname = "/dev/lircd"
+
+
+# Configuration directories.
+_userConfigDir = _conf.userConfigurationDirectory()
+_siteConfigDir = _conf.siteConfigurationDirectory()
+
+# Configuration file keys/property names.
+_sourceConfigKey = "source"
+
+# The number of seconds a client waits after it's reached EOF on the socket
+# it reads keycodes from before it tries re-opening the socket to read more
+# keycodes (if the client doesn't just stop on EOF).
+_secondsToWaitAfterEof = 5
+
+
+# Functions.
+
+def _executeShellCommand(cmd):
+    """
+    Executes the shell command 'cmd', throwing an exception if it exits with
+    a non-zero exit code. Returns True iff the command is executed
+    successfully.
+    """
+    output = ut.ut_executeShellCommand(cmd)
+    return (output is not None)
+
+def _printAction(keycode):
+    """
+    Given a Keycode object 'keycode' prints out information about it to the
+    standard output and returns True.
+    """
+    print "%s from %s repeated %i times" % \
+        (keycode.name, keycode.origin, keycode.repeatCount)
+    return True
+
+def _ignoreAction(keycode):
+    """
+    Given a Keycode object 'keycode' it ignores it and does nothing except
+    return True.
+    """
+    #self._debug("---> in _ignoreAction(%s)" % keycode)
+    return True
+
+
+def _execActionBuilder(cmd):
+    """
+    The function that's actually called when '_exec()' is called in a map
+    file: it returns a function that takes a Keycode as its sole argument,
+    executes the shell command 'cmd', and returns True iff it is executed
+    successfully.
+
+    See _executeShellCommand().
+    """
+    return lambda keycode, cmd = cmd: _executeShellCommand(cmd)
+
+def _printActionBuilder():
+    """
+    The function that's actually called when '_print()' is called in a map
+    file: it returns a function that takes a Keycode as its sole argument,
+    prints information about that keycode to the standard output, and returns
+    True.
+
+    See _printAction().
+    """
+    return lambda keycode: _printAction(keycode)
+
+
+# Constants, part 2.
+
+# A map from the names of functions usable in a map file to the functions
+# that build the corresponding actions.
+_mapFileFunctionsMap = {
+    "_exec": _execActionBuilder,
+    "_print": _printActionBuilder
+}
+
+
+# Classes.
+
+class Keycode(object):
+    """
+    A struct-like class that contains information about a keycode received
+    by an LIRC client.
+    """
+
+    def __init__(self, name, origin, repeatCount):
+        """
+        Initializes us with the keycode's name (a string), originating
+        device's name (also a string) and its 0-based repeat count (an int).
+        """
+        assert name
+        assert origin
+        assert repeatCount >= 0
+        self.name = name
+        self.origin = origin
+        self.repeatCount = repeatCount
+
+    def __str__(self):
+        return self.__repr__()
+
+    def __repr__(self):
+        return 'Keycode(name = "%s", origin = "%s", repeatCount = %i)' % \
+            (self.name, self.origin, self.repeatCount)
+
+class KeycodeActionFailedException(Exception):
+    """
+    The class of exception thrown when performing the action corresponding to
+    a keycode fails.
+    """
+    pass
+
+class Program(ut.ut_AbstractProgram):
+    """
+    Represents an LIRC client that handles each keycode from the remote
+    control based on information contained in a map file.
+    """
+
+    def _usageMessage(self, progName, shortHelpOpts, longHelpOpts,
+                      helpOptionsDesc):
+        result = """
+usage: %(progName)s %(shortHelpOpts)s %(longHelpOpts)s [-p] [-b basename] [-c config] [-m map] [-s source] [-n]
+
+which responds to keycodes received from an LIRC server. How
+each keycode is handled is specified in a map file: if no map
+file is found then each keycode's information is output to
+standard output.
+
+If the optional '-p' option is specified and a map file is
+specified then when the map file doesn't map a given keycode
+to anything then that keycode's information is output to
+standard output; otherwise the keycode is ignored.
+
+If the optional '-s' option is specified then keycodes will be
+obtained from the socket with pathname 'source'. Otherwise
+they'll be obtained from the socket whose pathname is specified
+in the configuration file, if there is one and it specifies the
+socket's pathname, and if not then the default socket pathname
+'%(defaultSourcePathname)s' will be used.
+
+If the optional '-c' option is specified then we use the file
+with pathname 'config' as our configuration file. Otherwise we
+look for the configuration file first in the user configuration
+directory %(userConfigDir)s, then in the site
+configuration directory %(siteConfigDir)s: if the optional '-b'
+option is specified then we look for a configuration file named
+'basename'%(defaultConfigExt)s, and otherwise we look for a file named
+%(defaultConfigBasename)s.
+
+If the optional '-m' option is specified then we use the file
+with pathname 'map' as our map file. Otherwise we look for the
+map file first in the user configuration directory, then in the
+site configuration directory: if the optional '-b' option is
+specified then we look for a map file named 'basename'%(defaultMapExt)s, and
+otherwise we look for a file named %(defaultMapBasename)s.
+
+By default once a client has started processing keycodes it
+won't stop until it's interrupted by the user (e.g. using
+Ctrl-C). But if the optional '-n' option is specified then it
+will also stop in some other circumstances, such as when it
+reaches EOF on the socket it reads keycodes from (which can
+happen if the LIRC server is stopped), or if something goes
+wrong when performing the action corresponding to a keycode.
+%(helpOptionsDesc)s""" % {
+        "progName": progName, "shortHelpOpts": shortHelpOpts,
+        "longHelpOpts": longHelpOpts, "helpOptionsDesc": helpOptionsDesc,
+        "userConfigDir": _userConfigDir, "siteConfigDir": _siteConfigDir,
+        "defaultConfigBasename": _defaultConfigFileBasename,
+        "defaultConfigExt": _defaultConfigFileExt,
+        "defaultMapBasename": _defaultMapFileBasename,
+        "defaultMapExt": _defaultMapFileExt,
+        "defaultSourcePathname": _defaultSourcePathname }
+        assert result
+        return result
+
+    def _shortOptions(self):
+        result = "b:c:m:nps:"
+        assert result is not None
+        return result
+
+    def _buildInitialArgumentsMap(self):
+        result = {
+            "source": None,
+            "config": None,
+            "isConfigExact": False,
+            "map": None,
+            "isMapExact": False,
+            "doPrintByDefault": False,
+            "doKeepGoing": True
+        }
+        assert result is not None
+        return result
+
+    def _processOption(self, opt, val, argsMap):
+        assert opt
+        # 'val' may be None
+        assert argsMap is not None
+        result = True
+        if opt == "-c":
+            argsMap["config"] = val
+            argsMap["isConfigExact"] = True
+        elif opt == "-m":
+            argsMap["map"] = val
+            argsMap["isMapExact"] = True
+        elif opt == "-b":
+            if not argsMap["isConfigExact"]:
+                argsMap["config"] = val
+            if not argsMap["isMapExact"]:
+                argsMap["map"] = val
+        elif opt == "-s":
+            argsMap["source"] = val
+        elif opt == "-p":
+            argsMap["doPrintByDefault"] = True
+        elif opt == "-n":
+            argsMap["doKeepGoing"] = False
+        else:
+            result = self._handleUnknownOption(opt)
+        return result
+
+    def _processNonOptionArguments(self, args, argsMap):
+        assert args is not None
+        assert argsMap is not None
+        result = True
+        numArgs = len(args)
+        if numArgs > 0:
+            result = False
+            self._fail("Too many arguments")
+        return result
+
+    def _execute(self, argsMap):
+        #self._debug("---> in _execute(argsMap)")
+        assert argsMap is not None
+        result = 0
+        configFile = None
+        try:
+            configFile = self._configurationFilePathname(argsMap)
+            configMap = self._parseConfigurationFile(configFile)
+        except IOError, ex:
+            result = 1  # '_fail()' has already been called.
+        except SyntaxError, ex:
+            result = 2  # '_fail()' has already been called.
+        if result == 0:
+            # Note: 'configMap' and 'configFile' may be None
+            source = self._sourceFilePathname(argsMap, configMap, configFile)
+            if source is None:
+                result = 3  # '_fail()' has already been called
+            else:
+                try:
+                    mapFile = self._mapFilePathname(argsMap)
+                    actionMap = self._parseMapFile(mapFile)
+                    if actionMap is None:
+                        actionMap = {}
+                except IOError, ex:
+                    result = 4  # '_fail()' has already been called.
+                except SyntaxError, ex:
+                    result = 5  # '_fail()' has already been called.
+                if result == 0:
+                    if mapFile is None or argsMap["doPrintByDefault"]:
+                        defaultAction = _printAction
+                    else:
+                        defaultAction = _ignoreAction
+                    if not self._processKeycodes(source, actionMap,
+                                    defaultAction, argsMap["doKeepGoing"]):
+                        result = 6  # '_fail()' has already been called
+        assert result >= 0
+        return result
+
+    def _sourceFilePathname(self, argsMap, configMap, configFile):
+        """
+        Returns the pathname of the source socket file (to read keycodes
+        from) that is specified by the information in 'argsMap' and/or the
+        configuration information map 'configMap' (whose contents, if it's
+        not None, were obtained from the configuration file with pathname
+        'configFile'). If the pathname isn't specified in either map then
+        the default pathname is returned.
+        """
+        #self._debug("---> in _sourceFilePathname(argsMap, configMap, configFile)")
+        assert argsMap is not None
+        assert (configMap is None) == (configFile is None)
+        result = argsMap["source"]
+        if result is None:
+            result = _defaultSourcePathname
+            if configMap is not None:
+                res = configMap.get(_sourceConfigKey)
+                if res is not None:
+                    result = res
+        # 'result' may be None
+        return result
+
+    def _configurationFilePathname(self, argsMap):
+        """
+        See _configurationOrMapFilePathname().
+        """
+        #self._debug("---> in _configurationFilePathname(argsMap)")
+        assert argsMap is not None
+        # 'result' may be None
+        return self._configurationOrMapFilePathname(argsMap, "config",
+                    "isConfigExact", "configuration", _defaultConfigFileExt)
+
+    def _parseConfigurationFile(self, configFile):
+        """
+        See _parseConfigurationOrMapFile().
+        """
+        #self._debug("---> in _parseConfigurationFile(%s)" % configFile)
+        # 'configFile' may be None
+        # 'result' may be None
+        return self._parseConfigurationOrMapFile(configFile, "configuration")
+
+    def _mapFilePathname(self, argsMap):
+        """
+        See _configurationOrMapFilePathname().
+        """
+        #self._debug("---> in _mapFilePathname(argsMap)")
+        assert argsMap is not None
+        # 'result' may be None
+        return self._configurationOrMapFilePathname(argsMap, "map",
+                                "isMapExact", "map", _defaultMapFileExt)
+
+    def _parseMapFile(self, mapFile):
+        """
+        See _parseConfigurationOrMapFile().
+        """
+        #self._debug("---> in _parseMapFile(%s)" % mapFile)
+        # 'mapFile' may be None
+        # 'result' may be None
+        return self._parseConfigurationOrMapFile(mapFile, "map",
+                                                 _mapFileFunctionsMap)
+
+
+    def _configurationOrMapFilePathname(self, argsMap, key, isExactKey,
+                                        fileDesc, ext):
+        """
+        Returns the pathname of the configuration or map file specified by
+        the information in 'argsMap', or returns None if no configuration/map
+        file is specified by 'argsMap' or (in the case where it's not exact)
+        no matching configuration/map file is found.
+
+        The file's name is the value in 'argsMap' with key 'key' with the
+        extension 'ext' appended to it, and whether it's exact or not is
+        determined by the value in 'argsMap' with key 'isExactKey'.
+        'fileDesc' is a (lowercase) description of the file that is suitable
+        for use in error messages.
+        """
+        #self._debug("---> in _configurationOrMapFilePathname(argsMap, %s, %s, %s)" % (key, isExactKey, fileDesc))
+        assert argsMap is not None
+        assert key is not None
+        assert isExactKey is not None
+        assert fileDesc is not None
+        assert ext is not None
+        result = argsMap[key]
+        if not argsMap[isExactKey]:
+            if result is not None:
+                bname = result + ext
+            else:
+                bname = _defaultBasenameStart + ext
+            result = _conf.findConfigurationFile(bname)
+            if result is None:
+                #self._debug("%s file not found: a regular file named '%s' couldn't be found in the user or site configuration directories ('%s' or '%s')" % (fileDesc.capitalize(), bname, _userConfigDir, _siteConfigDir))
+                pass
+        # 'result' may be None
+        return result
+
+    def _parseConfigurationOrMapFile(self, path, fileDesc, initMap = None):
+        """
+        Parses the configuration or map file with pathname 'path' iff it's
+        not None and returns a map containing all of the information in the
+        file. Iff 'initMap' is None then its mappings will be added to the
+        map we return (iff it's not None) before ones are added to it from
+        the file we parse.
+
+        'fileDesc' is a (lowercase) description of the file that is suitable
+        for use in error messages.
+
+        Raises a SyntaxError if the contents of the configuration/map file
+        are invalid, and raises an IOError if 'path' isn't None but a regular
+        file with that pathname doesn't exist or isn't readable. In both
+        cases _fail() will be called before the exception is raised.
+        """
+        #self._debug("---> in _parseConfigurationOrMapFile(%s, %s, %s)" % (path, fileDesc, ut.ut_prettyShortMap(initMap)))
+        # 'path' may be None
+        assert fileDesc is not None
+        # 'initMap' may be None
+        result = None
+        if path is not None:
+            if initMap is None:
+                result = {}
+            else:
+                result = initMap.copy()
+            try:
+                ut.ut_updateMapByExecutingFile(path, result)
+            except IOError, ex:
+                self._fail("Couldn't read the %s file '%s': %s" %
+                           (fileDesc, path, ex))
+                raise ex
+            except SyntaxError, ex:
+                self._fail("Error in %s file '%s': %s" %
+                           (fileDesc, path, ex))
+                raise ex
+        # 'result' may be None
+        return result
+
+
+    def _processKeycodes(self, source, actionMap,
+                         defaultAction, doKeepGoing):
+        """
+        Processes any and all keycodes read from the source socket file with
+        pathname 'source', mapping each one to an action using 'actionMap'
+        (or to 'defaultAction' if 'actionMap' doesn't map it to anything.
+
+        Returns True unless processing ended in a way that should result in
+        our program exiting with a non-zero exit code, in which case it can
+        be assumed that _fail() has been called.
+
+        If 'doKeepGoing' is True then we try to keep processing keycodes
+        until we're interrupted (e.g. by Ctrl-C): otherwise we may stop under
+        other circumstances too.
+        """
+        #self._debug("---> in _processKeycodes(%s, actionMap, defaultAction, doKeepGoing = %s)" % (source, str(doKeepGoing)))
+        assert source is not None
+        assert actionMap is not None
+        assert defaultAction is not None
+        result = True
+        isDone = False
+        isFirst = True
+        while not isDone:
+            f = None
+            try:
+                try:
+                    if not isFirst:
+                        # Wait a few seconds then try opening the socket for
+                        # reading again.
+                        self._debug("    waiting %i seconds ..." % _secondsToWaitAfterEof)
+                        time.sleep(_secondsToWaitAfterEof)
+                        self._debug("    ... before re-opening the socket")
+                    isFirst = False
+                    f = self._openSourceSocketAsFile(source)
+                    if f is not None:
+                        result = self._processKeycodeLines(f, actionMap,
+                                                defaultAction, doKeepGoing)
+                        isDone = (not result) and (not doKeepGoing)
+                    else:
+                        isDone = not doKeepGoing
+                except KeyboardInterrupt:
+                    # Always stop processing in this case.
+                    #self._debug("    got keyboard interrupt: exiting")
+                    result = True
+                    break  # while
+                except EOFError:
+                    if not doKeepGoing:
+                        isDone = True
+                        self._warn("Stopping because we've reached EOF "
+                            "on the socket we read\nkeycodes from (maybe "
+                            "because the LIRC server has stopped)")
+            finally:
+                ut.ut_tryToCloseAll(f)
+        return result
+
+    def _processKeycodeLines(self, f, actionMap, defaultAction, doKeepGoing):
+        """
+        Reads keycode lines from the file 'f' and processes them using the
+        actions in 'actionMap' and the 'defaultAction', returning True unless
+        something happened when processing keycodes that should cause this
+        client to exit with a non-zero exit code.
+
+        This method raises an EOFError if it reaches EOF on the keycode
+        socket, and re-raises any KeyboardInterrupt that is raised while it's
+        processing lines.
+        """
+        result = True
+        while result:
+            try:
+                line = f.readline()
+                if line:
+                    self._processOneKeycode(line, actionMap, defaultAction)
+                else:
+                    raise EOFError("LIRC client reached keycode socket EOF")
+            except KeyboardInterrupt, ex:
+                raise ex
+            except EOFError, ex:
+                raise ex
+            except:
+                result = doKeepGoing
+                self._warn("An exception was raised while processing a "
+                           "keycode: %s" % sys.exc_info()[1])
+        return result
+
+    def _openSourceSocketAsFile(self, source):
+        """
+        Opens the keycode source socket file with pathname 'source' and if
+        successful returns a file object that can be used to read from it;
+        otherwise _fail() is called and None is returned.
+        """
+        result = None
+        sock = None
+        try:
+            try:
+                sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                sock.connect(source)
+                result = sock.makefile("r")
+            except:
+                assert result is None
+                (type, value, trace) = sys.exc_info()
+                self._fail("Failed to open the keycode source socket '%s' "
+                    "for reading:\n  %s" % (source, value))
+        finally:
+            ut.ut_tryToCloseAll(sock)  # this should leave 'result' open
+
+        # 'result' may be None
+        return result
+
+    def _processOneKeycode(self, line, actionMap, defaultAction):
+        """
+        Processes the line 'line' read from our keycode source file that is
+        assumed to describe a single keycode, raising an exception iff the
+        processing fails.
+        """
+        assert line
+        assert actionMap is not None
+        assert defaultAction is not None
+        #self._debug("---> in _processOneKeycode(%s, actionMap, defaultAction)" % line)
+        keycode = self._parseKeycodeInformation(line)
+        #self._debug("    processing keycode: [%s]" % str(keycode))
+        action = actionMap.get(keycode.name, defaultAction)
+        #self._debug("    got corresponding action: %s" % str(action))
+        if not action(keycode):
+            #self._debug("    performing keycode action failed")
+            raise KeycodeActionFailedException("performing the action for "
+                "the keycode named '%s' failed" % keycode.name)
+        #self._debug("    successfully performed action for keycode")
+
+    def _parseKeycodeInformation(self, line):
+        """
+        Parses the line 'line' describing a keycode into a Keycode class
+        instance.
+
+        See Keycode.
+        parts, returning them as a tuple of the form
+
+            (name, origin, repeat-count)
+
+        where 'name' is the name of the button that was pressed, 'origin' is
+        the name of the device - usually a remote control - from which the
+        keycode originated, and 'repeat-count' indicates how long the button
+        has been held down (starting at 0 and increasing by 1 each time a new
+        IR signal is received).
+
+        Note: the 64-bit numeric encoding of the keycode is deprecated, so we
+        don't return it.
+        """
+        assert line
+        parts = line.split()
+        result = Keycode(parts[2], parts[3], int(parts[1]))
+        assert result is not None
+        return result
+
+
+# Main program.
+
+Program().run()

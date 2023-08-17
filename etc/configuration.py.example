@@ -1,0 +1,507 @@
+# Copyright (C) James MacKay 2008
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+
+# Comment this out to disable logging.
+#
+# Type: string (absolute pathname)
+#logFilePathname = "/var/log/audiofs.log"
+
+# Indicates whether or not debugging messages should be logged.
+#
+# Type: boolean
+# Default: False
+doDebugLogging = True
+
+# The pathname of the directory in which to create temporary files.
+#
+# Type: string (absolute pathname)
+tempDir = <<"/tmp">>
+
+# Determines whether the scripts that build and dismantle the music directory
+# mount and unmount filesystems. (If they don't then it is assumed that
+# they're mounted and unmounted by some other means.)
+#
+# Type: boolean
+# Default: True
+doMountFilesystems = True
+
+
+# The root directory 'rootDir' under which all music-related files (including
+# playlists, ratings files, etc.) are located.
+#
+# Type: string (absolute pathname)
+rootDir = <<"/extra/media/audio">>
+
+# The subdirectory of the root directory that is the base directory: the
+# directory under which is located one "final" version of each file in a
+# given format.
+#
+# The base directory MUST be under the root directory, or (in rare cases)
+# the same as the root directory (which is specified by setting 'baseSubdir'
+# to the empty string: '').
+baseSubdir = "all"
+
+# The name of the subdirectory under which to put (links to) "real" audio
+# files: that is, ones that aren't generated on the fly from other audio
+# files.
+#
+# Type: string (relative pathname)
+realFilesSubdir = "real"
+
+# The name of the subdirectory under which to put (links to) all audio files,
+# including ones that are generated on the fly from other audio files.
+#
+# Type: string (relative pathname)
+allFilesSubdir = baseSubdir
+
+
+# The data directories that contain the actual music files: the ones that
+# are linked to by links under the realFilesSubdir.
+#
+# Type: list of strings (each of which is an absolute pathname)
+dataDirs = <<["/data/remote/chaos/audio/data1",
+            "/data/remote/chaos/audio/data2",
+            "/data/remote/localhost/audio/data1"]>>
+
+
+# The names of specific audio file formats, and the main format from which
+# all other formats are (or at least could be) generated.
+#
+# Type: string
+mainFormat = flacFormat
+
+# The names of various kinds of audio files, and the main kind that
+# all other kinds only represent a part of.
+#
+# Type: string
+albumKind = "albums"
+trackKind = "tracks"
+mainKind = albumKind
+
+# The 0-based index of the component of a pathname (relative to our
+# baseDir) that indicates the format (FLAC, MP3, etc.) of the music
+# files under that directory.
+#
+# Note: at least for the present either this property must be 0 and
+# our 'kindPathnameComponentIndex' property must be 1 or vice versa.
+#
+# Type: int (0 or 1)
+formatPathnameComponentIndex = 0
+
+# The 0-based index of the component of a pathname (relative to our
+# baseDir) that indicates the kind (tracks or albums) of the music
+# files under that directory.
+#
+# Note: at least for the present either this property must be 0 and
+# our 'formatPathnameComponentIndex' property must be 1 or vice versa.
+#
+# Type: int (0 or 1)
+kindPathnameComponentIndex = 1
+
+# A list of all of the file extensions that, if a file ends with
+# one of them, it is assumed to NOT be an audio file of any kind.
+#
+# Type: list of strings
+nonAudioFileExtensions.extend(["txt", "sh", "tracks", "html",
+        "htm", "css", "err", "out", "jpg", "jpeg", "gif", "png"])
+
+# A list of the names of all of the subdirectories that are assumed
+# not to have any audio files in or under them, and so are omitted from
+# under the realFilesSubdir.
+#
+# Type: list of strings
+nonAudioSubdirectories.extend(["CVS"])
+
+
+# The name of the directory under which will be placed all non-audio files
+# (such as scripts and playlists), and the names of the subdirectories
+# under it.
+#
+# other/
+#     bin/
+#     control/
+#     doc/
+#     metadata/
+#     playlists/
+#         custom/
+#         generated/
+#     ratings/
+#     search/
+#
+# Type: string (relative pathname)
+otherSubdir = "other"
+binSubdir = "bin"
+systemSubdir = "control"
+documentationSubdir = "doc"
+metadataSubdir = "metadata"
+playlistsSubdir = "playlists"
+customPlaylistsSubdir = "custom"
+generatedPlaylistsSubdir = "generated"
+ratingsSubdir = "ratings"
+searchSubdir = "search"
+
+# The pathnames of the directories in which to store all of the various types
+# of information. They should all be (and stay) writable in order for the
+# information to get updated programmatically.
+#
+# Type: string (absolute (after user expansion) pathname)
+_sourceBaseDir = <<"~/music/other">>
+sourceMetadataDir = _join(_sourceBaseDir, "metadata")
+sourcePlaylistsDir = _join(_sourceBaseDir, "playlists")
+sourceRatingsDir = _join(_sourceBaseDir, "ratings")
+
+# The filename of the music directory catalogue file.
+#
+# Type: string (file basename)
+catalogueFilename = "catalogue.xml"
+
+
+# The filename - without the ratings file extension - of the main set of
+# audio file ratings.
+#
+# Type: string
+mainRatingsBasename = "main"
+
+# A list of the filenames - without the ratings file extensions - of all of
+# the files containing the different sets of ratings. It should include the
+# mainRatingsBasename.
+#
+# Type: list of strings
+allRatingsBasenames = [mainRatingsBasename]
+
+# The rating a music file starts with, between 1 (worst) and 10 (best), both
+# inclusive, or 0 which (usually) prevents the file from being selected at
+# all.
+#
+# Type: int (between 0 and 10, both inclusive)
+defaultRating = 5
+
+# The default number of music files in a generated playlist.
+#
+# Type: int (non-negative)
+defaultPlaylistSize = 50
+
+
+# A list of the (standard) names of the music file tags that can be searched
+# on in the search directory, or None if the search directory should be left
+# empty.
+#
+# Note: other information that can be searched on but that are not tags - such
+# as a music file's kind or format - should NOT be included in this list.
+#
+# Note: the names in this list must match the tag names that appear in the
+# music catalogue EXACTLY, including in case. However, lowercase versions of
+# these tag names will appear under the search directory.
+searchableTagNames = None
+#searchableTagNames = ["ALBUM", "ARTIST", "DATE", "GENRE", "TITLE", "TRACKNUMBER"]
+
+# The keys to associate with the format and kind of a music file in the search
+# directory. (The defaults should be used unless they conflict with the name of
+# a tag in 'searchableTagNames'.)
+formatSearchKey = "FORMAT"
+kindSearchKey = "KIND"
+
+
+# A list of the mount options that are used in mounting all music and cache
+# filesystems.
+#
+# Type: list of strings
+#
+# The 'allow_other' option allows the filesystems to be visible and accessible
+# by all other users, not just by the user that mounted them. It requires that
+# 'user_allow_other' appear uncommented in /etc/fuse.conf.
+commonMountOptionsList = ["intr", "kernel_cache"]
+#commonMountOptionsList = ["intr", "kernel_cache", "allow_other"]
+
+# The mount points at which to mount filesystems.
+#
+# Type: string (absolute pathname)
+_base = _join(rootDir, allFilesSubdir)
+flactrackMountPoint = _join(_base, flacFormat, trackKind)
+
+# A map from the mount points for each flac2mp3 filesystem to the bitrate
+# at which the MP3s generated by the filesystem are to be encoded. The map
+# may be empty ('{}').
+#flac2mp3MountPointToBitrateMap = {}
+flac2mp3MountPointToBitrateMap = {
+    _join(_base, mp3Format, trackKind): 192,
+    _join(_base, "low-%s" % mp3Format, trackKind): 128
+}
+
+# A map from the mount points for each flac2ogg filesystem to the bitrate
+# at which the OGG files generated by the filesystem are to be encoded. The
+# map may be empty ('{}').
+#flac2oggMountPointToBitrateMap = {}
+flac2oggMountPointToBitrateMap = {
+    _join(_base, oggFormat, trackKind): 192
+#    _join(_base, "low-%s" % oggFormat, trackKind): 128
+}
+
+
+# The prefix to use at the start of shell commands that are potentially
+# resource-intensive (such as audio file format conversion commands) in order
+# to reduce their impact on system performance.
+niceCommandPrefix = "nice -n 12 ionice -c2 -n7"
+
+# The pathname of the file to which information to be discarded is to be
+# written. Defaults to /dev/null.
+#discardFile = "/dev/null"
+#discardFile = "NUL"
+
+# The names of the scripts that mount various filesystems.
+#
+# Type: string (file basename)
+flactrackFilename = "flactrack"
+flac2mp3Filename = "flac2mp3"
+flac2oggFilename = "flac2ogg"
+musicsearchFilename = "musicsearch"
+allFilesystemFilenames = [flactrackFilename, flac2mp3Filename,
+    flac2oggFilename, musicsearchFilename]
+
+# The pathnames of the directories that the various audio filesystems cache
+# the files that they generate. They can share a directory or they can use
+# separate ones.
+#
+# Type: string (absolute pathname)
+flactrackCacheDir = <<"/extra/media/caches">>
+flac2mp3CacheDir = flactrackCacheDir
+flac2oggCacheDir = flac2mp3CacheDir
+
+# The pathnames of all of the cache directories used by the various audio
+# filesystems. It may contain duplicates.
+#
+# Type: list of strings (absolute pathnames)
+allCacheDirs = [flactrackCacheDir, flac2mp3CacheDir, flac2oggCacheDir]
+
+# A list of the pathnames of the mount points for all filesystems other than
+# the music filesystems specified elsewhere in this configuration file. This
+# list should NOT include any music search directory.
+#allNonmusicFilesystemMountPoints = []
+
+# The directories under which filesystems look for "real" files (iff the
+# directory exists).
+#
+# Type: string (absolute pathname)
+_d = _join(rootDir, realFilesSubdir)
+flactrackRealDir = _join(_d, flacFormat, trackKind)
+flac2mp3RealDir = _join(_d, mp3Format, trackKind)
+flac2oggRealDir = _join(_d, oggFormat, trackKind)
+
+_allDir = _join(rootDir, allFilesSubdir)
+_flacDir = _join(_allDir, flacFormat)
+flactrackAlbumsDir = _join(_flacDir, albumKind)
+flac2mp3FlacDir = _join(_flacDir, trackKind)
+flac2oggFlacDir = flac2mp3FlacDir
+
+
+#
+# Generated documentation.
+#
+
+docAlbumsHtmlStartFmt="""<html>
+<head>
+    <title>Albums List</title>
+    <META http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <!--
+    Generated: %(docLastUpdatedTimestamp)s
+    -->
+    <style media="all" type="text/css">
+
+
+    </style>
+</head>
+<body>
+    <h1>Albums List</h1>
+    <table class="albums">
+        <tr class="headings">
+            <th>Title</th>
+            <th>Artist</th>
+            <th>Year</th>
+        </tr>"""
+docAlbumsHtmlItemFmt="""
+        <tr class="album">
+            <td><a title="Genre: %(genre)s" href="%(url)s">%(title)s</a></td>
+            <td>%(artist)s</td>
+            <td>%(releaseDate)s</td>
+        </tr>"""
+docAlbumsHtmlEndFmt="""    </table>
+</body>
+</html>"""
+
+docTracksHtmlStartFmt="""<html>
+<head>
+    <title>Albums List</title>
+    <META http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <!--
+    Generated: %(docLastUpdatedTimestamp)s
+    -->
+    <style media="all" type="text/css">
+
+
+    </style>
+</head>
+<body>
+    <h1>Tracks List</h1>
+    <table class="tracks">
+        <tr class="headings">
+            <th>Title</th>
+            <th>Artist</th>
+            <th>Year</th>
+        </tr>"""
+docTracksHtmlItemFmt="""
+        <tr class="track">
+            <td><a title="Album: %(album)s\nGenre: %(genre)s" href="%(url)s">%(title)s</a></td>
+            <td>%(artist)s</td>
+            <td>%(releaseDate)s</td>
+        </tr>"""
+docTracksHtmlEndFmt="""    </table>
+</body>
+</html>"""
+
+
+#
+# MPD-specific configuration information.
+#
+
+# A map from the IDs by which all of the MPD servers - or at least the ones
+# that audiofs will know about - will be known to information about those
+# servers.
+#
+# The value of each item in the map is a 2- or 3-item list that describes an
+# MPD server: iff the list has 3 items then it describes a radio server. Each
+# of the 2- or 3-item lists consists of the following:
+#   - the first item in the list must be a string that specifies the hostname
+#     of the host that the server runs on
+#   - the second item in the list must be the port number of the port that
+#     the server listens on
+#   - if the list has a third item then it must be a map, each of whose keys
+#     is one of the following:
+#       - "minTracksAhead", in which case the associated value is a non-
+#         negative integer that specifies the minimum number of tracks that
+#         the server should ensure exist after the current track: if the
+#         number of tracks after the current track slips below this minimum
+#         then tracks are added until there are the maximum number of tracks
+#         after the current track (see "maxTracksAhead" below)
+#           - the map must include this key: it isn't optional
+#       - "maxTracksAhead", in which case the associated value is a non-
+#         negative integer that specifies the maximum number of tracks that
+#         the server should ensure exist after the current track: see
+#         "minTracksAhead" above
+#           - the map must include this key: it isn't optional
+#           - the value associated with this key must be greater than or equal
+#             to the value associated with the key "minTracksAhead"
+#       - "tracksBehind", in which case the associated value is a non-
+#         negative integer that specifies the minimum number of tracks before
+#         the current one that the radio server should keep
+#           - if the map doesn't include this key then its value defaults to
+#             10
+#       - "ratingsBasename", in which case the associated value is a string
+#         that is the basename of the ratings to use in selecting tracks to
+#         be added to the server
+#           - if the map doesn't include this key then its value defaults to
+#             the one specified by the "mainRatingsBasename" configuration
+#             property
+#       - "ratingToChancesConverter", in which case the associated value is a
+#         string that is the name of the rating-to-chances method to use in
+#         selecting tracks to be added to the server, and must be a valid
+#         argument to the '-R' option of the 'create-playlist' script
+#           - if the map doesn't include this key then its value defaults to
+#             "good"
+#           - valid values (currently) include "ok", "good", "better" and
+#             "best"
+#       - "includedGenres", in which case the associated value is a (possibly
+#         empty) list of strings, each of which names a genre to include in
+#         the server's playlist: an empty list causes all genres to be
+#         included
+#           - if the map doesn't include this key then its value defaults to
+#             the empty list ([])
+#       - "excludedGenres", in which case the associated value is a (possibly
+#         empty) list of strings each of which names a genre to exclude from
+#         the server's playlist
+#           - if the map doesn't include this key then its value defaults to
+#             the empty list ([])
+#
+# The values of two different items in the (topmost) map can't specify the
+# same hostname and port number.
+_localhost = "localhost"
+_comedyGenre = "Comedy"
+_nonMusicGenres = [_comedyGenre, "Spoken Word"]
+mpdServers = {
+    "queued": [_localhost, 6600],
+    "radio": [_localhost, 6601, {
+        "minTracksAhead": 30,
+        "maxTracksAhead": 50,
+        "excludedGenres": _nonMusicGenres}],
+    "reviewing": [_localhost, 6602],
+    "albums": [_localhost, 6603],
+    "better-radio": [_localhost, 6604, {
+        "minTracksAhead": 30,
+        "maxTracksAhead": 80,
+        "ratingToChancesConverter": "better",
+        "excludedGenres": _nonMusicGenres}],
+    "comedy-radio": [_localhost, 6605, {
+        "minTracksAhead": 20,
+        "maxTracksAhead": 40,
+        "includedGenres": [_comedyGenre]}]}
+
+# The ID of the default MPD server: it must be a key in the 'mpdServers' map.
+defaultMpdServerId = "reviewing"
+
+
+# The pathname (or filename iff it's in the PATH) of the program to run to
+# display information about the current track. Set it to None to prevent the
+# display of such information.
+#
+# Type: string (absolute or relative pathname)
+#mpdDisplayInformationProgram = None
+mpdDisplayInformationProgram = "osd_cat"
+
+# A list of the command lines arguments to be passed to the
+# mpdInformationDisplayProgram. An additional argument will be appended to
+# this list of arguments that specifies the pathname of the file that
+# contains the information that is to be displayed.
+#
+# Type: list of strings
+#_colour = "purple"
+_colour = "green"
+_fontSize = 120
+_font = "-adobe-helvetica-bold-r-normal-*-*-%i-*-*-p-*-*-*" % _fontSize
+mpdDisplayInformationProgramArguments = ["-c", _colour, "-f",
+    _font, "-l", "5", "-d", "0", "-p", "bottom", "-A", "right"]
+
+
+#
+# External programs.
+#
+# Note: the pathnames of programs used in the 'utilities' module
+# are hardcoded into that module (due to import circularities).
+#
+#
+# Type: string (absolute or relative pathname)
+fusermountProgram = "fusermount"
+mpcProgram = "mpc"
+mpdProgram = "mpd"
+cueprintProgram = "cueprint"
+cuebreakpointsProgram = "cuebreakpoints"
+flacProgram = "flac"
+ffmpegProgram = "ffmpeg"
+ffprobeProgram = "ffprobe"
+metaflacProgram = "metaflac"
+lameProgram = "lame"
+id3v2Program = "mid3v2"
+oggencProgram = "oggenc"
+vorbiscommentProgram = "vorbiscomment"

@@ -1,0 +1,114 @@
+#!/usr/bin/env python
+#
+# Copyright (C) James MacKay 2008
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+import sys
+
+from audiofs import musicfs
+import audiofs.utilities as ut
+
+
+# Classes.
+
+class Program(ut.ut_AbstractProgram):
+    """
+    Represents programs that output an ordered list of the pathnames of the
+    audio files in a music directory catalogue.
+    """
+
+    def _usageMessage(self, progName, shortHelpOpts, longHelpOpts,
+                      helpOptionsDesc):
+        result = """
+usage: %s %s %s [-s subdir] [-a] catalogue-file
+
+where 'catalogue-file' is the pathname of the music directory
+catalogue file from which to get the pathnames of the music
+files that we're to output to standard output.
+%s
+If the '-s' option is specified then only those music files in
+the catalogue under the subdirectory 'subdir' of the catalogued
+music directory will be included in the list, and 'subdir'
+will be removed from the start of all of the pathnames in the
+list. By default the pathnames of all of the (original) music
+files in the catalogue will be included in the list.
+
+By default only the pathnames of original music files - that
+is, those that aren't just a re-encoding of another music
+file - will be output. But if the '-a' option is specified
+then the pathnames of all of the music files in the catalogue
+will be output.""" % (progName, shortHelpOpts, longHelpOpts, helpOptionsDesc)
+        assert result
+        return result
+
+    def _shortOptions(self):
+        result = "s:a"
+        assert result is not None
+        return result
+
+    def _buildInitialArgumentsMap(self):
+        result = { "doOutputAll": False,
+                   "subdir": "",
+                   "catPath": None }
+        assert result is not None
+        return result
+
+    def _processOption(self, opt, val, argsMap):
+        assert opt
+        # 'val' may be None
+        assert argsMap is not None
+        result = True
+        if opt == "-a":
+            argsMap["doOutputAll"] = True
+        elif opt == "-s":
+            argsMap["subdir"] = val
+        else:
+            result = self._handleUnknownOption(opt)
+        return result
+
+    def _processNonOptionArguments(self, args, argsMap):
+        assert args is not None
+        assert argsMap is not None
+        result = False
+        numArgs = len(args)
+        if numArgs == 1:
+            result = True
+            argsMap["catPath"] = args[0]
+        elif numArgs > 1:
+            self._fail("Too many arguments")
+        else:
+            self._fail("No catalogue file specified")
+        return result
+
+    def _execute(self, argsMap):
+        assert argsMap is not None
+        result = 0
+        doOutputAll = argsMap["doOutputAll"]
+        subdir = argsMap["subdir"]
+        catPath = argsMap["catPath"]
+        w = sys.stdout
+        if doOutputAll:
+            b = musicfs.fs_OrderedPathnameListBuilder(w, subdir)
+        else:
+            b = musicfs.fs_OrderedOriginalPathnameListBuilder(w, subdir)
+        b.fs_parse(catPath)
+        assert result >= 0
+        return result
+
+
+# Main program.
+
+Program().run()

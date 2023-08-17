@@ -1,0 +1,93 @@
+#!/usr/bin/env python
+#
+# $Id: preload-audio-files,v 1.3 2010/02/09 13:15:09 jgm Exp $
+#
+# Preloads the specified audio files into the relevant filesystem caches
+# so that they don't have to be generated just before they're used.
+#
+# Copyright (C) James MacKay 2008
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+import audiofs.utilities as ut
+
+
+# Classes.
+
+class Program(ut.ut_AbstractProgram):
+    """
+    Represents programs that preload audio files into music filesystems'
+    caches.
+    """
+
+    def _usageMessage(self, progName, shortHelpOpts, longHelpOpts,
+                      helpOptionsDesc):
+        result = """
+usage: %s %s %s [-p] file ...
+
+where each 'file' is the pathname of the audio file that
+is to be preloaded so that it's cached.
+
+If the optional '-p' option is specified then the files will
+be preloaded in parallel: otherwise they'll be preloaded one
+at a time.
+%s""" % (progName, shortHelpOpts, longHelpOpts, helpOptionsDesc)
+        assert result
+        return result
+
+    def _shortOptions(self):
+        result = "p"
+        assert result is not None
+        return result
+
+    def _buildInitialArgumentsMap(self):
+        result = { "paths": None, "doFast": False }
+        assert result is not None
+        return result
+
+    def _processOption(self, opt, val, argsMap):
+        assert opt
+        # 'val' may be None
+        assert argsMap is not None
+        result = True
+        if opt == "-p":
+            argsMap["doFast"] = True
+        else:
+            result = self._handleUnknownOption(opt)
+        return result
+
+    def _processNonOptionArguments(self, args, argsMap):
+        assert args is not None
+        assert argsMap is not None
+        result = True
+        if len(args) > 0:
+            argsMap["paths"] = args
+        else:
+            self._fail("No files were specified")
+            result = False
+        return result
+
+    def _execute(self, argsMap):
+        assert argsMap is not None
+        result = 0
+        paths = argsMap["paths"]
+        ut.ut_preloadFiles(paths, doFast = argsMap["doFast"])
+        assert result >= 0
+        return result
+
+
+# Main program.
+
+Program().run()

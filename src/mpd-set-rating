@@ -1,0 +1,92 @@
+#!/usr/bin/env python
+#
+# Copyright (C) James MacKay 2008
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+from audiofs import mpd
+from audiofs import config
+
+
+# Constants
+
+_conf = config.obtain()
+
+# The operator to remove (possibly repeatedly) from our basename as part of
+# determining how much to increase a track's rating.
+_operator = "="
+
+# The default amount to set a track's rating to.
+_defaultAmount = _conf.defaultRating
+
+
+# Classes.
+
+class Program(mpd.mp_AbstractChangeRatingProgram):
+    """
+    Represents programs that set the rating of an MPD server's current track
+    to a specified value.
+    """
+
+    def _mainUsageDescription(self, amount, base, rootDir):
+        assert amount >= 0
+        assert base is not None
+        assert rootDir is not None
+        result = """
+which attempts to set to %i the rating in the '%s'
+ratings of the audio file with pathname 'file'. 'file'
+is relative to the root music directory
+('%s').""" % (amount, base, rootDir)
+        assert result
+        return result
+
+    def _actionDescription(self):
+        """
+        Returns a description of the action that we perform on a file, for
+        use in our usage message.
+        """
+        result = "set to"
+        assert result is not None
+        return result
+
+    def _ratingChangeAmount(self, argsMap):
+        assert argsMap is not None
+        result = mpd.mp_AbstractChangeRatingProgram. \
+            _ratingChangeAmount(self, argsMap)
+        result = min(result, config.maxRating)
+        assert result >= 0
+        return result
+
+    def _operatorCharacter(self):
+        result = _operator
+        assert len(result) == 1
+        return result
+
+    def _defaultRatingChangeAmount(self):
+        result = _defaultAmount
+        assert result >= 0
+        return result
+
+    def _changeRating(self, server, amount, base, path):
+        assert server is not None
+        assert amount >= 0
+        # 'base' may be None (indicating the main ratings basename)
+        # 'path' may be None (indicating the pathname of the current track)
+        server.setRating(amount, base, path)
+
+
+# Main program.
+
+Program().run()
