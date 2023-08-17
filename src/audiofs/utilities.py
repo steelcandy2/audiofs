@@ -1,6 +1,3 @@
-#
-# $Id: utilities.py,v 1.84 2013/09/26 18:34:15 jgm Exp $
-#
 # Defines functions and classes of general utility.
 #
 # Copyright (C) James MacKay 2008

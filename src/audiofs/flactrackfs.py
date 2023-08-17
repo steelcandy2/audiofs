@@ -1,6 +1,3 @@
-#
-# $Id: flactrackfs.py,v 1.58 2012/07/07 14:42:38 jgm Exp $
-#
 # Defines a class that implements a FUSE filesystem that contains the result
 # of merging the files under an optional "real" directory and FLAC audio
 # files that represent the individual tracks of the albums represented by

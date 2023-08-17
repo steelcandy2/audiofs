@@ -1,6 +1,3 @@
-#
-# $Id: music.py,v 1.35 2012/10/12 02:28:35 jgm Exp $
-#
 # Defines music-related constants, functions and classes, including ones
 # dealing with specific audio file formats.
 #

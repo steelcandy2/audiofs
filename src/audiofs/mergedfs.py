@@ -1,6 +1,3 @@
-#
-# $Id: mergedfs.py,v 1.52 2012/07/07 15:32:27 jgm Exp $
-#
 # Defines an abstract base class for Python classes that implement read-only
 # FUSE filesystems that, as part of their implementations, cache generated
 # files (or files that are otherwise inconvenient to access directly).

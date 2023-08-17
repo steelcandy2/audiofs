@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 #
-# $Id: dismantle-music-directory,v 1.2 2008/12/16 22:12:40 jgm Exp $
-#
 # Dismantles an existing music directory: stops the associated daemons,
 # unmounts all of the filesystems mounted under the music directory and
 # deletes everything in and under the music directory.

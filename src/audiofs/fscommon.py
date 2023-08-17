@@ -1,6 +1,3 @@
-#
-# $Id: fscommon.py,v 1.47 2013/09/26 13:39:44 jgm Exp $
-#
 # Defines common functions, constants and classes for use in implementing
 # FUSE filesystems using the fuse-python API.
 #

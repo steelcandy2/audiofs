@@ -1,6 +1,3 @@
-#
-# $Id: admin.py,v 1.28 2011/03/23 19:29:37 jgm Exp $
-#
 # Defines functions and classes used to administer a music directory and the
 # associated programs, etc.
 #

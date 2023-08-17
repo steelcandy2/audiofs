@@ -1,6 +1,3 @@
-#
-# $Id: musicfs.py,v 1.86 2012/10/12 01:54:18 jgm Exp $
-#
 # Defines an abstract base class for our music FUSE filesystems, as well as
 # related constants, functions, etc.
 #

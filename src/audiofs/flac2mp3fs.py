@@ -1,6 +1,3 @@
-#
-# $Id: flac2mp3fs.py,v 1.46 2011/11/25 04:46:25 jgm Exp $
-#
 # Defines a class that implements a FUSE filesystem that contains the result
 # of merging the files under an optional "real" directory and MP3 versions of
 # FLAC files under another directory.

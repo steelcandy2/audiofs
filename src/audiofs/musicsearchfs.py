@@ -1,6 +1,3 @@
-#
-# $Id: musicsearchfs.py,v 1.5 2009/03/13 08:53:35 jgm Exp $
-#
 # Defines a class that implements a FUSE filesystem that allows a music
 # directory to be searched based on a number of criteria.
 #

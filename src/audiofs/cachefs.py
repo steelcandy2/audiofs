@@ -1,6 +1,3 @@
-#
-# $Id: cachefs.py,v 1.39 2008/11/03 21:56:04 jgm Exp $
-#
 # Defines a filesystem that caches files up to a maximum collective size
 # and/or number.
 #

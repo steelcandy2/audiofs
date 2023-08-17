@@ -1,6 +1,3 @@
-#
-# $Id: mpd.py,v 1.63 2013/09/26 19:29:51 jgm Exp $
-#
 # Defines a class that represents a single MPD server.
 #
 # Copyright (C) James MacKay 2008

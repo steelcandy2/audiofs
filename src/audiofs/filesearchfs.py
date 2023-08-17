@@ -1,6 +1,3 @@
-#
-# $Id: filesearchfs.py,v 1.11 2010/04/22 13:20:58 jgm Exp $
-#
 # Defines an abstract base class for FUSE filesystems that can be used to
 # search a collection of files based on a number of criteria, as well as
 # related classes, functions, etc.

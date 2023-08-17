@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 #
-# $Id: activate-music-directory,v 1.2 2008/12/16 22:12:40 jgm Exp $
-#
 # Activates an existing music directory: builds/mounts the caches, mounts
 # the audio filesystems and starts the associated daemons.
 #

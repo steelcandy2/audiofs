@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 #
-# $Id: maintain-cache-directory,v 1.6 2010/05/08 15:54:22 jgm Exp $
-#
 # Maintains a cache directory by checking that the total size of all of the
 # regular files under it does not exceed a specified size, and if it does
 # deletes enough of the least-recently accessed files under it so that the

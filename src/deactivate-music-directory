@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 #
-# $Id: deactivate-music-directory,v 1.2 2008/12/16 22:12:40 jgm Exp $
-#
 # Deactivates an existing music directory: stops the associated daemons,
 # unmounts the audio filesystems and unmounts any cache filesystems.
 #

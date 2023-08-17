@@ -1,6 +1,3 @@
-#
-# $Id: config.py,v 1.53 2012/07/07 14:42:38 jgm Exp $
-#
 # Contains common configuration information for the programs and modules
 # in this directory and its subdirectories.
 #
