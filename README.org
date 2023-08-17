@@ -1,0 +1,70 @@
+#+title: AudioFS
+#+date: <2022-06-06 Mon 16:38>
+#+description: README file for the 'AudioFS' userspace filesystems, etc.
+#+OPTIONS: toc:nil num:nil date:nil
+#+OPTIONS: org-use-sub-superscripts:nil
+
+The core of =AudioFS= consists of userspace filesystems that convert a
+directory tree of audio files into another form or format. The main
+filesystems that it provides are:
+
+  - *flactrack*: given as a source a directory tree containing [[https://en.wikipedia.org/wiki/FLAC][FLAC]]-encoded
+    audio files representing entire albums along with associated external
+    [[https://en.wikipedia.org/wiki/Cue_sheet_(computing)][cue files]], the filesystem will have a similar file structure, except that
+    corresponding to each of the per-album FLAC files will be a directory
+    containing one FLAC audio file for each of the album's tracks, where each
+    such per-track audio file's basename and metadata will include the
+    track's title and the name of the artist that performed it
+  - *flac2mp3*: given as a source a directory tree containing FLAC-encoded
+    audio files, the filesystem will have an identical structure except that
+    in place of each FLAC audio file in the source it'll have an [[https://en.wikipedia.org/wiki/MP3][MP3]] audio
+    file that is a compressed representation of the same audio data, and that
+    has similar metadata to that of the corresponding FLAC audio file
+    (limited by the [[https://en.wikipedia.org/wiki/ID3][ID3v2]] tags that the MP3s' metadata is stored in)
+  - *flac2ogg*: given as a source a directory tree containing FLAC-encoded
+    audio files, the filesystem will have an identical structure except that
+    in place of each FLAC audio file in the source it'll have an [[https://en.wikipedia.org/wiki/MP3][Ogg Vorbis]]
+    audio file that is a compressed representation of the same audio data,
+    and that has the same metadata as the corresponding FLAC audio file
+  - *musicsearchfs*: given as a source a directory tree containing audio
+    files, as well as an SQLite database containing metadata about all of
+    those audio files, the filesystem contains symlinks to all of the audio
+    files in the collection whose metadata match any given criteria: for
+    example, the subdirectory =/Artist/Curve/and/Year/1997/= will contain
+    symlinks to all of the audio files in the collection by the band Curve
+    that are from the year 1997
+    - note that for a music collection of any size =musicsearchfs=
+      filesystems will be /huge/, and so you want to be sure that things like
+      backup programs don't end up trying to traverse all of one!
+
+The fact that these are filesystems gives them a certain amount of
+flexibility:
+  - one AudioFS filesystem can be used as the source of another: for example,
+    a =flactrack= filesystem can be the source of a =flac2mp3= filesystem,
+    which would result in the latter containing an MP3 audio file for each
+    track of each album in the =flactrack= filesystem's source
+  - as with any other file, wildcards can be used when interacting with a
+    =musicsearchfs= filesystem: for example, the command
+    ~ls Kind/track/Artist/Wire/and/Year/19[78]*/and/Title/*Love*/*~ could be
+    used to list (symlinks to) all of the songs in your music collection by
+    the band Wire that were from the 1970s and 1980s, and whose titles
+    contain 'Love'
+
+AudioFS also includes code to managing music directories and for integration
+with an MPD music server. For more information see its [[file:doc/index.html][full documentation]].
+
+*Important Note:* this software was written quite a while ago (mostly between
+2008 and 2011) and hasn't been used for quite a while, so it probably has
+some issues that make it unsuitable to be used as-is, including:
+  - the fact that it's written in Python 2 (since Python 3 wasn't even
+    released until the [[https://en.wikipedia.org/wiki/Python_(programming_language)#History][end of 2008]])
+  - some aspects that are specific to the [[https://www.musicpd.org/][MPD]] music player also assume that
+    the player's catalogue file has the same format as one from an older
+    version (namely version 15 or 16) of the software, which is unlikely to
+    be the same as MPD's current catalogue file format
+  - the packages (mainly [[https://pypi.org/project/fuse-python/][fuse-python]]) and command line programs that it uses
+    may have made incompatible changes to their interfaces
+
+However, I used it almost daily for several years to play almost all of my
+music, so it should be possible to make it fully functional again with some
+time and effort.
